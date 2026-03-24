@@ -1,0 +1,50 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cavemanager
+      POSTGRES_USER: cave
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cave"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  cave-api:
+    build: ./api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://cave:${DB_PASSWORD}@postgres:5432/cavemanager
+      INBOX_PATH: /inbox
+      PROCESSED_PATH: /processed
+      ERRORS_PATH: /errors
+      PHOTOS_PATH: /photos
+      PORT: 3001
+    volumes:
+      - /volume1/cave-manager/inbox:/inbox
+      - /volume1/cave-manager/processed:/processed
+      - /volume1/cave-manager/errors:/errors
+      - wine_photos:/photos
+    ports:
+      - "3001:3001"
+
+  cave-app:
+    build: ./app
+    restart: unless-stopped
+    depends_on:
+      - cave-api
+    ports:
+      - "3000:80"
+
+volumes:
+  postgres_data:
+  wine_photos:

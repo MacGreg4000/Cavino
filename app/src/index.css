@@ -1,0 +1,158 @@
+@import "tailwindcss";
+
+/* ── Cave Noire Design Tokens ─────────────────────────── */
+
+@theme {
+  /* Colors */
+  --color-bg: #0D0806;
+  --color-surface: #1A1210;
+  --color-surface-hover: #241A16;
+  --color-surface-active: #2E221C;
+  --color-border: #2E221C;
+  --color-border-subtle: #1F1714;
+
+  /* Accent — Bordeaux/Rubis */
+  --color-accent: #8B1A1A;
+  --color-accent-hover: #A02020;
+  --color-accent-bright: #C0392B;
+
+  /* Accent secondaire — Or vieilli */
+  --color-gold: #C9A84C;
+  --color-gold-dim: #A08A3C;
+  --color-gold-bright: #E0C060;
+
+  /* Champagne */
+  --color-champagne: #E8D5A3;
+  --color-champagne-bright: #F5E6C8;
+
+  /* Texte */
+  --color-text: #F0E6D3;
+  --color-text-secondary: #8A7A6A;
+  --color-text-muted: #5C4F44;
+
+  /* Sémantique */
+  --color-success: #2D6A4F;
+  --color-warning: #C9A84C;
+  --color-danger: #C0392B;
+  --color-info: #4A90A4;
+
+  /* Wine types */
+  --color-wine-red: #8B1A1A;
+  --color-wine-white: #E8D5A3;
+  --color-wine-rose: #D4727A;
+  --color-wine-champagne: #F5E6C8;
+  --color-wine-sweet: #C9A84C;
+
+  /* Fonts */
+  --font-display: 'Playfair Display', Georgia, serif;
+  --font-body: 'DM Sans', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
+  --shadow-glow-accent: 0 0 20px rgba(139, 26, 26, 0.3);
+  --shadow-glow-gold: 0 0 20px rgba(201, 168, 76, 0.3);
+}
+
+/* ── Base ──────────────────────────────────────────────── */
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--color-bg);
+  overscroll-behavior: none;
+}
+
+#root {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Noise texture ────────────────────────────────────── */
+
+.surface-noise {
+  position: relative;
+}
+
+.surface-noise::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  background-size: 256px 256px;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+/* ── Scrollbar ────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: var(--radius-full);
+}
+
+/* ── Safe area for bottom nav ─────────────────────────── */
+
+.pb-safe {
+  padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* ── Animations ───────────────────────────────────────── */
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes pulse-gold {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(201, 168, 76, 0.4); }
+  50% { box-shadow: 0 0 12px 4px rgba(201, 168, 76, 0.2); }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.animate-pulse-gold {
+  animation: pulse-gold 2s ease-in-out infinite;
+}
