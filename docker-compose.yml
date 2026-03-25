@@ -29,9 +29,9 @@ services:
       OLLAMA_URL: ${OLLAMA_URL:-http://macciolupo.tplinkdns.com:11434}
       PORT: 3001
     volumes:
-      - ${CAVE_DATA:-/volume1/cave-manager}/inbox:/inbox
-      - ${CAVE_DATA:-/volume1/cave-manager}/processed:/processed
-      - ${CAVE_DATA:-/volume1/cave-manager}/errors:/errors
+      - ./data/inbox:/inbox
+      - ./data/processed:/processed
+      - ./data/errors:/errors
       - wine_photos:/photos
     ports:
       - "3001:3001"
