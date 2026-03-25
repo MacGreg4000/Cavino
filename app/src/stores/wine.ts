@@ -77,7 +77,7 @@ const API = '/api';
 // Lazy import offline DB to avoid blocking initial load
 const getOfflineDb = () => import('../lib/db').then((m) => m);
 
-export const useWineStore = create<WineState>((set, get) => ({
+export const useWineStore = create<WineState>((set) => ({
   wines: [],
   pending: [],
   pendingCount: 0,

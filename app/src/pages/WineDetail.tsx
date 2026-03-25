@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Wine as WineIcon, Thermometer, Clock, GlassWater, Grape, MapPin, Award, Heart, Trash2 } from 'lucide-react';
+import { Thermometer, Clock, GlassWater, Grape, MapPin, Award, Trash2 } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';

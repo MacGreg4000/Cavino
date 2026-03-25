@@ -6,7 +6,7 @@ import { Badge } from '../components/ui/Badge';
 import { useWineStore } from '../stores/wine';
 
 export function Home() {
-  const { wines, pending, pendingCount, fetchWines, fetchPending } = useWineStore();
+  const { wines, pendingCount, fetchWines, fetchPending } = useWineStore();
 
   useEffect(() => {
     fetchWines();

@@ -7,6 +7,7 @@ import { wineRoutes } from './routes/wines.js';
 import { locationRoutes } from './routes/locations.js';
 import { statsRoutes } from './routes/stats.js';
 import { tastingRoutes } from './routes/tasting.js';
+import { advisorRoutes } from './routes/advisor.js';
 import { startWatcher } from './watcher.js';
 import { addClient } from './websocket.js';
 
@@ -40,6 +41,7 @@ async function main() {
   await app.register(locationRoutes);
   await app.register(statsRoutes);
   await app.register(tastingRoutes);
+  await app.register(advisorRoutes);
 
   // Health check
   app.get('/api/health', async () => ({ status: 'ok', timestamp: new Date().toISOString() }));

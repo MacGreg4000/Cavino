@@ -3,38 +3,38 @@
 /* ── Cave Noire Design Tokens ─────────────────────────── */
 
 @theme {
-  /* Colors */
-  --color-bg: #0D0806;
-  --color-surface: #1A1210;
-  --color-surface-hover: #241A16;
-  --color-surface-active: #2E221C;
-  --color-border: #2E221C;
-  --color-border-subtle: #1F1714;
+  /* Colors — Cave Chaleureuse */
+  --color-bg: #1C1412;
+  --color-surface: #2A201C;
+  --color-surface-hover: #362A24;
+  --color-surface-active: #42342C;
+  --color-border: #4A3C34;
+  --color-border-subtle: #382C24;
 
   /* Accent — Bordeaux/Rubis */
-  --color-accent: #8B1A1A;
-  --color-accent-hover: #A02020;
-  --color-accent-bright: #C0392B;
+  --color-accent: #A52828;
+  --color-accent-hover: #BE3030;
+  --color-accent-bright: #D44A3A;
 
   /* Accent secondaire — Or vieilli */
-  --color-gold: #C9A84C;
-  --color-gold-dim: #A08A3C;
-  --color-gold-bright: #E0C060;
+  --color-gold: #D4B65C;
+  --color-gold-dim: #B89840;
+  --color-gold-bright: #E8CC70;
 
   /* Champagne */
-  --color-champagne: #E8D5A3;
-  --color-champagne-bright: #F5E6C8;
+  --color-champagne: #F0DDB0;
+  --color-champagne-bright: #F8ECD0;
 
   /* Texte */
-  --color-text: #F0E6D3;
-  --color-text-secondary: #8A7A6A;
-  --color-text-muted: #5C4F44;
+  --color-text: #F5EDE0;
+  --color-text-secondary: #B8A898;
+  --color-text-muted: #8A7A6C;
 
   /* Sémantique */
-  --color-success: #2D6A4F;
-  --color-warning: #C9A84C;
-  --color-danger: #C0392B;
-  --color-info: #4A90A4;
+  --color-success: #3D8A65;
+  --color-warning: #D4B65C;
+  --color-danger: #D44A3A;
+  --color-info: #5AA8BE;
 
   /* Wine types */
   --color-wine-red: #8B1A1A;
@@ -56,11 +56,11 @@
   --radius-full: 9999px;
 
   /* Shadows */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
-  --shadow-glow-accent: 0 0 20px rgba(139, 26, 26, 0.3);
-  --shadow-glow-gold: 0 0 20px rgba(201, 168, 76, 0.3);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --shadow-glow-accent: 0 0 20px rgba(165, 40, 40, 0.3);
+  --shadow-glow-gold: 0 0 20px rgba(212, 182, 92, 0.3);
 }
 
 /* ── Base ──────────────────────────────────────────────── */

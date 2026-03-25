@@ -4,7 +4,7 @@ import { useToast } from '../components/ui/Toast';
 
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const addPendingFromWs = useWineStore((s) => s.addPendingFromWs);
   const { toast } = useToast();
   const attemptsRef = useRef(0);

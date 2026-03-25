@@ -10,8 +10,12 @@ RUN npx tsc
 FROM node:20-alpine
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm ci
 COPY --from=builder /app/dist ./dist
-COPY drizzle ./drizzle
+COPY drizzle.config.ts ./
+COPY src/db/schema.ts ./src/db/schema.ts
+COPY tsconfig.json ./
+COPY entrypoint.sh ./
+RUN chmod +x entrypoint.sh
 EXPOSE 3001
-CMD ["node", "dist/index.js"]
+ENTRYPOINT ["./entrypoint.sh"]

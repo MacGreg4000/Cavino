@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { UtensilsCrossed, Send, Wine } from 'lucide-react';
+import { UtensilsCrossed, Send, Wine, Wifi, WifiOff } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -11,16 +11,34 @@ import { recommendWines } from '../services/recommendation';
 
 const TAGS = ['Viande rouge', 'Poisson', 'Fromage', 'Volaille', 'Pâtes', 'Fruits de mer', 'Gibier', 'Dessert', 'Apéritif', 'Barbecue'];
 
-interface Results {
-  caveWines: Array<{ wine: WineType; score: number; reason: string }>;
+interface Recommendation {
+  wine: WineType;
+  score: number;
+  reason: string;
 }
 
 export function Advisor() {
   const wines = useWineStore((s) => s.wines);
   const [meal, setMeal] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [results, setResults] = useState<Results | null>(null);
+  const [results, setResults] = useState<Recommendation[] | null>(null);
   const [loading, setLoading] = useState(false);
+  const [ollamaOnline, setOllamaOnline] = useState<boolean | null>(null);
+  const [mode, setMode] = useState<'ollama' | 'offline'>('ollama');
+
+  // Vérifier Ollama au montage
+  useEffect(() => {
+    fetch('/api/advisor/status')
+      .then((r) => r.json())
+      .then((data) => {
+        setOllamaOnline(data.online);
+        if (!data.online) setMode('offline');
+      })
+      .catch(() => {
+        setOllamaOnline(false);
+        setMode('offline');
+      });
+  }, []);
 
   const toggleTag = (tag: string) => {
     setSelectedTags((prev) =>
@@ -28,13 +46,50 @@ export function Advisor() {
     );
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!meal && selectedTags.length === 0) return;
     setLoading(true);
+    setResults(null);
 
-    // Moteur offline basé sur les pairings stockés en DB
-    const caveWines = recommendWines(wines, meal, selectedTags);
-    setResults({ caveWines });
+    if (mode === 'ollama' && ollamaOnline) {
+      try {
+        const res = await fetch('/api/advisor/ask', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            meal,
+            tags: selectedTags,
+            wines: wines.map((w) => ({
+              id: w.id,
+              name: w.name,
+              type: w.type,
+              region: w.region,
+              appellation: w.appellation,
+            })),
+          }),
+        });
+        const data = await res.json();
+        if (data.recommendations?.length > 0) {
+          const mapped = data.recommendations
+            .map((r: { id: string; score: number; reason: string }) => {
+              const wine = wines.find((w) => w.id === r.id);
+              if (!wine) return null;
+              return { wine, score: r.score, reason: r.reason };
+            })
+            .filter(Boolean) as Recommendation[];
+          setResults(mapped.length > 0 ? mapped : recommendWines(wines, meal, selectedTags));
+        } else {
+          // Fallback offline
+          setResults(recommendWines(wines, meal, selectedTags));
+        }
+      } catch {
+        // Fallback offline en cas d'erreur
+        setResults(recommendWines(wines, meal, selectedTags));
+      }
+    } else {
+      setResults(recommendWines(wines, meal, selectedTags));
+    }
+
     setLoading(false);
   };
 
@@ -43,6 +98,34 @@ export function Advisor() {
       <PageHeader title="Conseiller" subtitle="Quel repas préparez-vous ?" />
 
       <div className="px-4 pt-4 max-w-lg mx-auto space-y-4 pb-8">
+        {/* Mode toggle */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => ollamaOnline && setMode('ollama')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-[var(--radius-full)] border transition-colors cursor-pointer ${
+              mode === 'ollama'
+                ? 'bg-accent/20 border-accent/40 text-accent-bright'
+                : 'bg-surface border-border-subtle text-text-muted'
+            } ${!ollamaOnline ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            {ollamaOnline ? <Wifi size={12} /> : <WifiOff size={12} />}
+            IA Sommelier
+          </button>
+          <button
+            onClick={() => setMode('offline')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-[var(--radius-full)] border transition-colors cursor-pointer ${
+              mode === 'offline'
+                ? 'bg-accent/20 border-accent/40 text-accent-bright'
+                : 'bg-surface border-border-subtle text-text-secondary hover:border-border'
+            }`}
+          >
+            Accords cave
+          </button>
+          {ollamaOnline === false && (
+            <span className="text-[10px] text-text-muted ml-auto">Ollama hors ligne</span>
+          )}
+        </div>
+
         {/* Meal input */}
         <Card>
           <textarea
@@ -85,15 +168,14 @@ export function Advisor() {
         {/* Results */}
         {results && (
           <div className="space-y-3 animate-fade-in">
-            {/* Cave recommendations */}
-            {results.caveWines.length > 0 && (
+            {results.length > 0 && (
               <div>
                 <h3 className="text-sm font-semibold text-text mb-2 flex items-center gap-2">
                   <Wine size={14} className="text-accent" />
-                  Dans votre cave
+                  {mode === 'ollama' ? 'Recommandations IA' : 'Dans votre cave'}
                 </h3>
                 <div className="flex flex-col gap-2">
-                  {results.caveWines.map(({ wine, reason }) => (
+                  {results.map(({ wine, score, reason }) => (
                     <Link key={wine.id} to={`/cave/${wine.id}`}>
                       <Card hover className="!p-3">
                         <div className="flex items-center gap-3">
@@ -111,7 +193,9 @@ export function Advisor() {
                             </p>
                             <p className="text-[10px] text-gold mt-0.5">{reason}</p>
                           </div>
-                          <span className="text-xs text-text-muted font-mono">×{wine.quantity}</span>
+                          {score > 0 && (
+                            <Badge variant="gold">{score}</Badge>
+                          )}
                         </div>
                       </Card>
                     </Link>
@@ -120,14 +204,13 @@ export function Advisor() {
               </div>
             )}
 
-            {/* No results */}
-            {results.caveWines.length === 0 && (
+            {results.length === 0 && (
               <Card>
                 <div className="flex items-start gap-3">
                   <UtensilsCrossed size={18} className="text-text-muted mt-0.5" />
                   <div>
                     <p className="text-sm text-text-secondary">
-                      Aucun accord trouvé dans votre cave pour ce repas.
+                      Aucun accord trouvé pour ce repas.
                     </p>
                     <p className="text-xs text-text-muted mt-1">
                       Ajoutez plus de bouteilles avec des accords détaillés via le scan.

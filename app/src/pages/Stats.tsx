@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BarChart3, Wine, TrendingUp, Clock, MapPin } from 'lucide-react';
+import { BarChart3, Wine, TrendingUp, MapPin } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card } from '../components/ui/Card';
@@ -16,13 +16,13 @@ interface StatsData {
 }
 
 const TYPE_COLORS: Record<string, string> = {
-  rouge: '#8B1A1A',
-  blanc: '#E8D5A3',
+  rouge: '#A52828',
+  blanc: '#F0DDB0',
   rosé: '#D4727A',
-  champagne: '#F5E6C8',
-  effervescent: '#F5E6C8',
-  moelleux: '#C9A84C',
-  liquoreux: '#C9A84C',
+  champagne: '#F8ECD0',
+  effervescent: '#F8ECD0',
+  moelleux: '#D4B65C',
+  liquoreux: '#D4B65C',
 };
 
 const BAR_TYPE_COLORS: Record<string, string> = {

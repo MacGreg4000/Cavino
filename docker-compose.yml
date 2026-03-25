@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -7,7 +5,7 @@ services:
     environment:
       POSTGRES_DB: cavemanager
       POSTGRES_USER: cave
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-caveau2024}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -23,16 +21,17 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://cave:${DB_PASSWORD}@postgres:5432/cavemanager
+      DATABASE_URL: postgresql://cave:${DB_PASSWORD:-caveau2024}@postgres:5432/cavemanager
       INBOX_PATH: /inbox
       PROCESSED_PATH: /processed
       ERRORS_PATH: /errors
       PHOTOS_PATH: /photos
+      OLLAMA_URL: ${OLLAMA_URL:-http://macciolupo.tplinkdns.com:11434}
       PORT: 3001
     volumes:
-      - /volume1/cave-manager/inbox:/inbox
-      - /volume1/cave-manager/processed:/processed
-      - /volume1/cave-manager/errors:/errors
+      - ${CAVE_DATA:-/volume1/cave-manager}/inbox:/inbox
+      - ${CAVE_DATA:-/volume1/cave-manager}/processed:/processed
+      - ${CAVE_DATA:-/volume1/cave-manager}/errors:/errors
       - wine_photos:/photos
     ports:
       - "3001:3001"

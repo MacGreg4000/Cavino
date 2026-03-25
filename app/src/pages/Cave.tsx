@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Wine, Grid3x3, List, MapPin } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { SearchBar } from '../components/ui/Input';
 import { EmptyState } from '../components/ui/EmptyState';
-import { Button } from '../components/ui/Button';
 import { useWineStore, type Wine as WineType } from '../stores/wine';
 
 const wineTypeVariant = (type?: string) => {
@@ -69,12 +68,9 @@ function WineCard({ wine }: { wine: WineType }) {
 }
 
 export function Cave() {
-  const { wines, pending, pendingCount, fetchWines, fetchPending } = useWineStore();
-  const [searchParams] = useSearchParams();
+  const { wines, pendingCount, fetchWines, fetchPending } = useWineStore();
   const [search, setSearch] = useState('');
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
-
-  const showPending = searchParams.get('tab') === 'pending';
 
   useEffect(() => {
     fetchWines();

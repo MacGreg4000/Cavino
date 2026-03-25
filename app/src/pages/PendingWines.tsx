@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Wine, Check, X, Edit3 } from 'lucide-react';
+import { Wine, Check, X } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
