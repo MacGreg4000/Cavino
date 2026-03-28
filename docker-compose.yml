@@ -57,7 +57,7 @@ services:
       POSTGRES_USER: cave
       PGPASSWORD: ${DB_PASSWORD:-caveau2024}
     volumes:
-      - ./data/backups:/backups
+      - cave_backups:/backups
       - ./backup.sh:/backup.sh:ro
     entrypoint: >
       sh -c "chmod +x /backup.sh &&
@@ -69,3 +69,4 @@ services:
 volumes:
   postgres_data:
   wine_photos:
+  cave_backups:
