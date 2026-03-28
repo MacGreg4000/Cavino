@@ -57,7 +57,9 @@ export const useLocationStore = create<LocationState>((set) => ({
     set({ loading: true });
     try {
       const res = await apiFetch(`${API}/locations`);
-      const locations = await res.json();
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const locations = Array.isArray(data) ? data : [];
       set({ locations, loading: false });
     } catch {
       set({ loading: false });

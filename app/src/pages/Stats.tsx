@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { BarChart3, Wine, TrendingUp, MapPin } from 'lucide-react';
+import { apiFetch } from '../lib/api';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card } from '../components/ui/Card';
@@ -48,7 +49,7 @@ export function Stats() {
   const [stats, setStats] = useState<StatsData | null>(null);
 
   useEffect(() => {
-    fetch('/api/stats').then((r) => r.json()).then(setStats).catch(() => {});
+    apiFetch('/api/stats').then((r) => r.ok ? r.json() : null).then((d) => d?.byType ? setStats(d) : null).catch(() => {});
   }, []);
 
   if (!stats) {

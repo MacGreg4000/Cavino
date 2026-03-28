@@ -4,7 +4,7 @@ export function apiFetch(url: string, options?: RequestInit): Promise<Response> 
   // Import dynamique pour éviter les dépendances circulaires
   const token = (() => {
     try {
-      return JSON.parse(localStorage.getItem('cave-auth') || '{}').token as string | null;
+      return JSON.parse(localStorage.getItem('cave-auth') || '{}').state?.token as string | null;
     } catch {
       return null;
     }
