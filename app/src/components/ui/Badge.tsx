@@ -11,12 +11,12 @@ interface BadgeProps {
 
 const variantStyles: Record<BadgeVariant, string> = {
   default: 'bg-surface-hover text-text-secondary border-border',
-  red: 'bg-wine-red/20 text-[#E8A0A0] border-wine-red/30',
-  white: 'bg-wine-white/15 text-wine-white border-wine-white/25',
-  rose: 'bg-wine-rose/20 text-wine-rose border-wine-rose/30',
+  red: 'bg-wine-red/15 text-wine-red border-wine-red/30',
+  white: 'bg-wine-white/15 text-wine-white border-wine-white/30',
+  rose: 'bg-wine-rose/15 text-wine-rose border-wine-rose/30',
   champagne: 'bg-champagne/15 text-champagne border-champagne/25',
   gold: 'bg-gold/15 text-gold border-gold/30',
-  success: 'bg-success/20 text-[#52B788] border-success/30',
+  success: 'bg-success/15 text-success border-success/30',
   warning: 'bg-warning/20 text-warning border-warning/30',
   danger: 'bg-danger/20 text-danger border-danger/30',
   info: 'bg-info/20 text-info border-info/30',
