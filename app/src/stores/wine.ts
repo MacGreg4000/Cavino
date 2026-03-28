@@ -43,6 +43,7 @@ export interface Wine {
   quantity?: number;
   locationId?: string;
   slotIds?: string[];
+  nfcTagId?: string;
   purchasePrice?: string;
   estimatedValue?: string;
   photoUrl?: string;
