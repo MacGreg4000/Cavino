@@ -17,5 +17,5 @@ COPY src/db/schema.ts ./src/db/schema.ts
 COPY tsconfig.json ./
 COPY entrypoint.sh ./
 RUN chmod +x entrypoint.sh
-EXPOSE 3001
+EXPOSE 3010
 ENTRYPOINT ["./entrypoint.sh"]

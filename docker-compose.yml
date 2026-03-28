@@ -27,14 +27,14 @@ services:
       ERRORS_PATH: /errors
       PHOTOS_PATH: /photos
       OLLAMA_URL: ${OLLAMA_URL:-http://macciolupo.tplinkdns.com:11434}
-      PORT: 3001
+      PORT: ${API_PORT:-3010}
     volumes:
       - ./data/inbox:/inbox
       - ./data/processed:/processed
       - ./data/errors:/errors
       - wine_photos:/photos
     ports:
-      - "3001:3001"
+      - "${API_PORT:-3010}:${API_PORT:-3010}"
 
   cave-app:
     build: ./app
