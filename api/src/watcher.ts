@@ -28,12 +28,15 @@ export function startWatcher() {
     fs.mkdir(ERRORS, { recursive: true }),
   ]).catch(() => {});
 
+  const usePolling = process.env.CHOKIDAR_USEPOLLING !== 'false';
   const watcher = chokidar.watch(path.join(INBOX, '*.json'), {
     persistent: true,
     ignoreInitial: false,
+    usePolling,
+    interval: 5000,
     awaitWriteFinish: {
-      stabilityThreshold: 800,
-      pollInterval: 100,
+      stabilityThreshold: 2000,
+      pollInterval: 500,
     },
   });
 
