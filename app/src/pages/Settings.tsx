@@ -25,7 +25,7 @@ export function Settings() {
   const handleScan = async () => {
     setScanning(true);
     try {
-      const res = await apiFetch('/api/import/scan', { method: 'POST' });
+      const res = await apiFetch('/api/import/scan', { method: 'POST', body: '{}' });
       const data = await res.json();
       if (data.imported > 0) {
         toast('success', `${data.imported} bouteille(s) importée(s)`);
