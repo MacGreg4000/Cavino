@@ -39,7 +39,10 @@ services:
       - "${API_PORT:-3010}:${API_PORT:-3010}"
 
   cave-app:
-    build: ./app
+    build:
+      context: ./app
+      args:
+        VITE_PUBLIC_BASE_URL: ${VITE_PUBLIC_BASE_URL:-}
     restart: unless-stopped
     depends_on:
       - cave-api
@@ -60,8 +63,7 @@ services:
       - cave_backups:/backups
       - ./backup.sh:/backup.sh:ro
     entrypoint: >
-      sh -c "chmod +x /backup.sh &&
-             while true; do
+      sh -c "while true; do
                POSTGRES_USER=cave POSTGRES_DB=cavemanager sh /backup.sh;
                sleep ${BACKUP_INTERVAL:-86400};
              done"

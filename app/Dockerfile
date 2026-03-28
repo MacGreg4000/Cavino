@@ -3,6 +3,8 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
+ARG VITE_PUBLIC_BASE_URL
+ENV VITE_PUBLIC_BASE_URL=$VITE_PUBLIC_BASE_URL
 RUN npm run build
 
 FROM nginx:alpine
