@@ -60,7 +60,7 @@ export async function importWinePair({ jsonPath, photoPath }: ImportInput): Prom
     const awards = (data.awards ?? []).map((a) => ({
       year: a.year,
       name: a.label ?? a.name ?? '',
-      medal: a.score ?? a.medal,
+      medal: a.score ?? a.medal ?? undefined,
     }));
 
     const [inserted] = await db.insert(wines).values({
