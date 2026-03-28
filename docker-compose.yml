@@ -28,7 +28,7 @@ services:
       PHOTOS_PATH: /photos
       OLLAMA_URL: ${OLLAMA_URL:-http://macciolupo.tplinkdns.com:11434}
       PORT: ${API_PORT:-3010}
-      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_SECRET: ${JWT_SECRET:-caveau_jwt_secret_change_me}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme}
     volumes:
       - ./data/inbox:/inbox
