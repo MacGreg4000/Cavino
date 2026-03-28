@@ -1,14 +1,8 @@
 // Helper fetch qui attache automatiquement le token Bearer de l'auth store
+import { useAuthStore } from '../stores/auth';
 
 export function apiFetch(url: string, options?: RequestInit): Promise<Response> {
-  // Import dynamique pour éviter les dépendances circulaires
-  const token = (() => {
-    try {
-      return JSON.parse(localStorage.getItem('cave-auth') || '{}').state?.token as string | null;
-    } catch {
-      return null;
-    }
-  })();
+  const token = useAuthStore.getState().token;
 
   return fetch(url, {
     ...options,
