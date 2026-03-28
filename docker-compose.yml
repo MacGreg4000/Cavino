@@ -46,6 +46,26 @@ services:
     ports:
       - "${APP_PORT:-3011}:80"
 
+  cave-backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_DB: cavemanager
+      POSTGRES_USER: cave
+      PGPASSWORD: ${DB_PASSWORD:-caveau2024}
+    volumes:
+      - ./data/backups:/backups
+      - ./backup.sh:/backup.sh:ro
+    entrypoint: >
+      sh -c "chmod +x /backup.sh &&
+             while true; do
+               POSTGRES_USER=cave POSTGRES_DB=cavemanager sh /backup.sh;
+               sleep ${BACKUP_INTERVAL:-86400};
+             done"
+
 volumes:
   postgres_data:
   wine_photos:

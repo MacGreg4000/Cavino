@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Wine, Check, X } from 'lucide-react';
+import { Wine, Check, X, RefreshCw } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -11,6 +11,7 @@ import { EmptyState } from '../components/ui/EmptyState';
 import { useWineStore, type Wine as WineType } from '../stores/wine';
 import { useToast } from '../components/ui/Toast';
 import { SlotPicker } from '../components/cellar/SlotPicker';
+import { apiFetch } from '../lib/api';
 
 function ValidationForm({ wine, onClose }: { wine: WineType; onClose: () => void }) {
   const { toast } = useToast();
@@ -103,16 +104,43 @@ function ValidationForm({ wine, onClose }: { wine: WineType; onClose: () => void
 export function PendingWines() {
   const { pending, fetchPending } = useWineStore();
   const [selected, setSelected] = useState<WineType | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     fetchPending();
   }, [fetchPending]);
+
+  const handleScan = async () => {
+    setScanning(true);
+    try {
+      const res = await apiFetch('/api/import/scan', { method: 'POST', body: '{}' });
+      const data = await res.json();
+      if (data.imported > 0) {
+        toast('success', `${data.imported} bouteille(s) importée(s)`);
+        fetchPending();
+      } else if (data.errors?.length > 0) {
+        toast('error', `Erreur : ${data.errors[0]}`);
+      } else {
+        toast('info', data.message || 'Aucun fichier à importer');
+      }
+    } catch {
+      toast('error', 'Erreur lors du scan');
+    }
+    setScanning(false);
+  };
 
   return (
     <div>
       <PageHeader title="À valider" subtitle={`${pending.length} bouteille${pending.length > 1 ? 's' : ''}`} back />
 
       <div className="px-4 pt-4 max-w-lg mx-auto">
+        <div className="mb-4 flex justify-end">
+          <Button variant="secondary" size="sm" loading={scanning} onClick={handleScan}>
+            <RefreshCw size={14} /> Scanner l'inbox
+          </Button>
+        </div>
+
         {pending.length === 0 ? (
           <EmptyState
             icon={<Check size={48} />}
