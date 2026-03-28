@@ -28,15 +28,15 @@ export function Settings() {
       const res = await apiFetch('/api/import/scan', { method: 'POST' });
       const data = await res.json();
       if (data.imported > 0) {
-        toast({ title: `${data.imported} bouteille(s) importée(s)`, variant: 'success' });
+        toast('success', `${data.imported} bouteille(s) importée(s)`);
         fetchPending();
       } else if (data.errors?.length > 0) {
-        toast({ title: `Erreurs : ${data.errors[0]}`, variant: 'error' });
+        toast('error', `Erreur : ${data.errors[0]}`);
       } else {
-        toast({ title: data.message || 'Aucun fichier à importer', variant: 'default' });
+        toast('info', data.message || 'Aucun fichier à importer');
       }
     } catch {
-      toast({ title: 'Erreur lors du scan', variant: 'error' });
+      toast('error', 'Erreur lors du scan');
     }
     setScanning(false);
   };
