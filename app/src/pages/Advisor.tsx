@@ -53,7 +53,8 @@ export function Advisor() {
 
     if (mode === 'ollama' && ollamaOnline) {
       try {
-        const res = await fetch('/api/advisor/ask', {
+        const { apiFetch } = await import('../lib/api');
+        const res = await apiFetch('/api/advisor/ask', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

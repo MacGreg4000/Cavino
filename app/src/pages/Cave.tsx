@@ -19,6 +19,15 @@ const wineTypeVariant = (type?: string) => {
   }
 };
 
+function typeLeftBorder(type?: string): string {
+  const t = type?.toLowerCase() ?? '';
+  if (t.includes('rouge') || t.includes('red')) return 'border-l-wine-red/70';
+  if (t.includes('blanc') || t.includes('white')) return 'border-l-wine-white/50';
+  if (t.includes('rosé') || t.includes('rose')) return 'border-l-wine-rose/70';
+  if (t.includes('champagne') || t.includes('mousseux') || t.includes('crémant')) return 'border-l-champagne/50';
+  return 'border-l-border';
+}
+
 function gardeStatus(wine: WineType): { label: string; variant: 'success' | 'warning' | 'danger' | 'gold' | 'default' } {
   const year = new Date().getFullYear();
   if (wine.peakFrom && wine.peakUntil && year >= wine.peakFrom && year <= wine.peakUntil) {
@@ -36,33 +45,70 @@ function gardeStatus(wine: WineType): { label: string; variant: 'success' | 'war
   return { label: 'Prêt', variant: 'success' };
 }
 
-function WineCard({ wine }: { wine: WineType }) {
+function WineListCard({ wine }: { wine: WineType }) {
   const garde = gardeStatus(wine);
   return (
     <Link to={`/cave/${wine.id}`}>
-      <Card hover className="!p-3">
-        <div className="flex items-center gap-3">
-          {wine.photoUrl ? (
-            <img src={wine.photoUrl} alt="" className="w-12 h-12 rounded-[var(--radius-md)] object-cover" />
-          ) : (
-            <div className="w-12 h-12 rounded-[var(--radius-md)] bg-surface-hover flex items-center justify-center">
-              <Wine size={20} className="text-text-muted" />
-            </div>
-          )}
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-text truncate">{wine.name}</p>
-            <p className="text-xs text-text-secondary truncate">
-              {wine.domain && `${wine.domain} · `}{wine.vintage || 'NV'}
-              {wine.appellation && ` · ${wine.appellation}`}
-            </p>
-            <div className="flex items-center gap-1.5 mt-1">
-              <Badge variant={wineTypeVariant(wine.type)}>{wine.type || '?'}</Badge>
-              <Badge variant={garde.variant}>{garde.label}</Badge>
-            </div>
+      <div className={`flex items-center gap-3 bg-surface rounded-[var(--radius-md)] p-3 border border-border border-l-4 ${typeLeftBorder(wine.type)} hover:bg-surface-hover transition-colors active:scale-[0.99]`}>
+        {wine.photoUrl ? (
+          <img src={wine.photoUrl} alt="" className="w-16 h-16 rounded-[var(--radius-sm)] object-cover flex-shrink-0" />
+        ) : (
+          <div className="w-16 h-16 rounded-[var(--radius-sm)] bg-surface-hover flex items-center justify-center flex-shrink-0">
+            <Wine size={20} className="text-text-muted" />
           </div>
-          <span className="text-sm text-text-muted font-mono">×{wine.quantity || 0}</span>
+        )}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-text truncate">{wine.name}</p>
+          <p className="text-xs text-text-secondary truncate mt-0.5">
+            {wine.domain && `${wine.domain} · `}{wine.vintage || 'NV'}
+            {wine.appellation && ` · ${wine.appellation}`}
+          </p>
+          <div className="flex items-center gap-1.5 mt-1.5">
+            <Badge variant={wineTypeVariant(wine.type)}>{wine.type || '?'}</Badge>
+            <Badge variant={garde.variant}>{garde.label}</Badge>
+          </div>
         </div>
-      </Card>
+        <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+          <span className="text-sm text-text-muted font-mono">×{wine.quantity || 0}</span>
+          {wine.estimatedValue && parseFloat(wine.estimatedValue) > 0 && (
+            <span className="text-xs text-gold font-medium">
+              {parseFloat(wine.estimatedValue).toFixed(0)}€
+            </span>
+          )}
+          {wine.slotIds?.[0] && (
+            <span className="font-mono text-[10px] text-text-muted bg-surface-active px-1.5 py-0.5 rounded">
+              {wine.slotIds[0]}
+            </span>
+          )}
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function WineGridCard({ wine }: { wine: WineType }) {
+  const garde = gardeStatus(wine);
+  return (
+    <Link to={`/cave/${wine.id}`}>
+      <div className={`bg-surface rounded-[var(--radius-md)] border border-border border-t-4 ${typeLeftBorder(wine.type).replace('border-l-', 'border-t-')} overflow-hidden hover:bg-surface-hover transition-colors active:scale-[0.99]`}>
+        {wine.photoUrl ? (
+          <div className="aspect-[3/4] overflow-hidden">
+            <img src={wine.photoUrl} alt="" className="w-full h-full object-cover" />
+          </div>
+        ) : (
+          <div className="aspect-[3/4] bg-surface-hover flex items-center justify-center">
+            <Wine size={28} className="text-text-muted" />
+          </div>
+        )}
+        <div className="p-2.5">
+          <p className="text-xs font-semibold text-text truncate">{wine.name}</p>
+          <p className="text-[10px] text-text-muted mt-0.5">{wine.vintage || 'NV'}</p>
+          <div className="flex items-center justify-between mt-1.5">
+            <Badge variant={garde.variant}>{garde.label}</Badge>
+            <span className="font-mono text-[10px] text-text-muted">×{wine.quantity || 0}</span>
+          </div>
+        </div>
+      </div>
     </Link>
   );
 }
@@ -144,10 +190,16 @@ export function Cave() {
             title={search ? 'Aucun résultat' : 'Cave vide'}
             description={search ? 'Essayez un autre terme' : 'Scannez des étiquettes pour commencer'}
           />
-        ) : (
+        ) : viewMode === 'list' ? (
           <div className="flex flex-col gap-2 pb-4">
             {filtered.map((wine) => (
-              <WineCard key={wine.id} wine={wine} />
+              <WineListCard key={wine.id} wine={wine} />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 pb-4">
+            {filtered.map((wine) => (
+              <WineGridCard key={wine.id} wine={wine} />
             ))}
           </div>
         )}

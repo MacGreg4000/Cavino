@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { apiFetch } from '../lib/api';
 
 export interface Wine {
   id: string;
@@ -87,7 +88,7 @@ export const useWineStore = create<WineState>((set) => ({
   fetchWines: async () => {
     set({ loading: true, error: null });
     try {
-      const res = await fetch(`${API}/wines`);
+      const res = await apiFetch(`${API}/wines`);
       const wines = await res.json();
       set({ wines, loading: false });
       // Cache for offline
@@ -106,16 +107,15 @@ export const useWineStore = create<WineState>((set) => ({
 
   fetchPending: async () => {
     try {
-      const res = await fetch(`${API}/wines/pending`);
+      const res = await apiFetch(`${API}/wines/pending`);
       const pending = await res.json();
       set({ pending, pendingCount: pending.length });
     } catch {}
   },
 
   validateWine: async (id, data) => {
-    const res = await fetch(`${API}/wines/${id}/validate`, {
+    const res = await apiFetch(`${API}/wines/${id}/validate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
     if (!res.ok) throw new Error('Validation failed');
@@ -129,7 +129,7 @@ export const useWineStore = create<WineState>((set) => ({
   },
 
   drinkWine: async (id) => {
-    const res = await fetch(`${API}/wines/${id}/drink`, { method: 'POST' });
+    const res = await apiFetch(`${API}/wines/${id}/drink`, { method: 'POST' });
     if (!res.ok) throw new Error('Drink failed');
     const updated = await res.json();
 
@@ -139,7 +139,7 @@ export const useWineStore = create<WineState>((set) => ({
   },
 
   deleteWine: async (id) => {
-    const res = await fetch(`${API}/wines/${id}`, { method: 'DELETE' });
+    const res = await apiFetch(`${API}/wines/${id}`, { method: 'DELETE' });
     if (!res.ok) throw new Error('Delete failed');
 
     set((s) => ({

@@ -39,6 +39,30 @@ export async function importWinePair({ jsonPath, photoPath }: ImportInput): Prom
       photoUrl = `/photos/${photoFilename}`;
     }
 
+    // Résoudre la valeur estimée (nouveau format: purchase.estimatedValue, ancien: estimated_value)
+    const estimatedValue = data.purchase?.estimatedValue ?? data.estimated_value;
+
+    // Résoudre la confiance du scan (nouveau: meta.confidence, ancien: scan_confidence)
+    const scanConfidence = data.meta?.confidence ?? data.scan_confidence;
+
+    // Résoudre la date du scan (nouveau: meta.scanDate, sinon date courante)
+    const scanDate = data.meta?.scanDate ?? new Date().toISOString().split('T')[0];
+
+    // Résoudre la taille de la bouteille
+    const bottleSize = data.identity.bottleSize ?? data.purchase?.bottleSize;
+
+    // Dériver le boolean decanting depuis decantingTime si pas fourni explicitement
+    const decanting = data.service?.decanting ?? (
+      data.service?.decantingTime != null && data.service.decantingTime > 0
+    );
+
+    // Normaliser les awards : nouveau format { label, score } → DB { name, medal }
+    const awards = (data.awards ?? []).map((a) => ({
+      year: a.year,
+      name: a.label ?? a.name ?? '',
+      medal: a.score ?? a.medal,
+    }));
+
     const [inserted] = await db.insert(wines).values({
       id: wineId,
 
@@ -47,60 +71,60 @@ export async function importWinePair({ jsonPath, photoPath }: ImportInput): Prom
       domain: data.identity.domain,
       appellation: data.identity.appellation,
       vintage: data.identity.vintage,
-      nonVintage: data.identity.non_vintage,
+      nonVintage: data.identity.nonVintage,
       type: data.identity.type,
       grapes: data.identity.grapes,
       country: data.identity.country,
       region: data.identity.region,
-      subRegion: data.identity.sub_region,
+      subRegion: data.identity.subRegion,
       classification: data.identity.classification,
       mentions: data.identity.mentions,
       alcohol: data.identity.alcohol?.toString(),
-      bottleSize: data.identity.bottle_size?.toString(),
+      bottleSize: bottleSize?.toString(),
 
       // Service
-      servingTempMin: data.service.serving_temp_min,
-      servingTempMax: data.service.serving_temp_max,
-      decanting: data.service.decanting,
-      decantingTime: data.service.decanting_time,
-      glassType: data.service.glass_type,
+      servingTempMin: data.service?.servingTempMin,
+      servingTempMax: data.service?.servingTempMax,
+      decanting,
+      decantingTime: data.service?.decantingTime,
+      glassType: data.service?.glassType,
 
-      // Garde
-      drinkFrom: data.garde.drink_from,
-      drinkUntil: data.garde.drink_until,
-      peakFrom: data.garde.peak_from,
-      peakUntil: data.garde.peak_until,
-      currentPhase: data.garde.current_phase,
-      agingNotes: data.garde.aging_notes,
+      // Garde / Aging
+      drinkFrom: data.aging?.drinkFrom,
+      drinkUntil: data.aging?.drinkUntil,
+      peakFrom: data.aging?.peakFrom,
+      peakUntil: data.aging?.peakUntil,
+      currentPhase: data.aging?.currentPhase,
+      agingNotes: data.aging?.agingNotes,
 
       // Analyse IA
-      description: data.analysis.description,
-      vintageNotes: data.analysis.vintage_notes,
-      aromaPrimary: data.analysis.aroma_primary,
-      aromaSecondary: data.analysis.aroma_secondary,
-      aromaTertiary: data.analysis.aroma_tertiary,
-      palate: data.analysis.palate,
-      style: data.analysis.style,
+      description: data.analysis?.description,
+      vintageNotes: data.analysis?.vintageNotes,
+      aromaPrimary: data.analysis?.aromaProfile?.primary ?? [],
+      aromaSecondary: data.analysis?.aromaProfile?.secondary ?? [],
+      aromaTertiary: data.analysis?.aromaProfile?.tertiary ?? [],
+      palate: data.analysis?.palate,
+      style: data.analysis?.style,
 
       // Accords
-      pairingsIdeal: data.pairings.ideal,
-      pairingsGood: data.pairings.good,
-      pairingsAvoid: data.pairings.avoid,
-      occasions: data.pairings.occasions,
-      cheesePairings: data.pairings.cheese,
+      pairingsIdeal: data.pairings?.ideal ?? [],
+      pairingsGood: data.pairings?.good ?? [],
+      pairingsAvoid: data.pairings?.avoid ?? [],
+      occasions: data.pairings?.occasions ?? [],
+      cheesePairings: data.pairings?.cheese ?? [],
 
       // Valeur
-      estimatedValue: data.estimated_value?.toString(),
+      estimatedValue: estimatedValue?.toString(),
 
       // Médias
       photoUrl,
-      awards: data.awards,
+      awards,
 
       // Import
       importStatus: 'pending',
       sourceFile: path.basename(jsonPath),
-      scanDate: new Date().toISOString().split('T')[0],
-      scanConfidence: data.scan_confidence,
+      scanDate,
+      scanConfidence,
     }).returning({ id: wines.id, name: wines.name });
 
     return { success: true, wine: { id: inserted.id, name: inserted.name } };

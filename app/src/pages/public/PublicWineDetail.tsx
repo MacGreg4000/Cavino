@@ -1,26 +1,19 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import {
-  Thermometer, Clock, GlassWater, Grape, MapPin, Award, Trash2,
-  QrCode, Copy, Check, UtensilsCrossed, ExternalLink
+  Thermometer, Clock, GlassWater, Grape, MapPin, Award,
+  ChevronLeft, UtensilsCrossed, Star, XCircle
 } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
-import { PageHeader } from '../components/layout/PageHeader';
-import { Card } from '../components/ui/Card';
-import { Badge } from '../components/ui/Badge';
-import { Button } from '../components/ui/Button';
-import { BottomSheet } from '../components/ui/BottomSheet';
-import { useWineStore, type Wine } from '../stores/wine';
-import { useToast } from '../components/ui/Toast';
-
-const PUBLIC_BASE = import.meta.env.VITE_PUBLIC_BASE_URL || '';
+import { Badge } from '../../components/ui/Badge';
+import { Card } from '../../components/ui/Card';
+import type { Wine } from '../../stores/wine';
 
 function typeAccent(type?: string): string {
   const t = type?.toLowerCase() ?? '';
   if (t.includes('rouge') || t.includes('red')) return 'border-wine-red';
   if (t.includes('blanc') || t.includes('white')) return 'border-wine-white';
   if (t.includes('rosé') || t.includes('rose')) return 'border-wine-rose';
-  if (t.includes('champagne') || t.includes('mousseux')) return 'border-champagne';
+  if (t.includes('champagne') || t.includes('mousseux') || t.includes('crémant')) return 'border-champagne';
   return 'border-accent';
 }
 
@@ -31,6 +24,16 @@ function typeHeroBg(type?: string): string {
   if (t.includes('rosé') || t.includes('rose')) return 'from-wine-rose/20 to-bg';
   if (t.includes('champagne') || t.includes('mousseux')) return 'from-champagne/15 to-bg';
   return 'from-accent/20 to-bg';
+}
+
+function PhaseLabel({ phase }: { phase?: string | null }) {
+  if (!phase) return null;
+  const p = phase.toLowerCase();
+  const variant = p.includes('apogée') || p.includes('apogee') ? 'gold'
+    : p.includes('jeune') ? 'default'
+    : p.includes('déclin') || p.includes('declin') ? 'danger'
+    : 'default';
+  return <Badge variant={variant} className="capitalize">{phase}</Badge>;
 }
 
 function GardeTimeline({ wine }: { wine: Wine }) {
@@ -44,12 +47,6 @@ function GardeTimeline({ wine }: { wine: Wine }) {
   const peakStart = wine.peakFrom ? ((wine.peakFrom - from) / range) * 100 : 0;
   const peakEnd = wine.peakUntil ? ((wine.peakUntil - from) / range) * 100 : 100;
 
-  const phase = wine.currentPhase;
-  const phaseVariant = phase?.toLowerCase().includes('apogée') ? 'gold'
-    : phase?.toLowerCase().includes('jeune') ? 'default'
-    : phase?.toLowerCase().includes('déclin') ? 'danger'
-    : 'default';
-
   return (
     <Card>
       <div className="flex items-center justify-between mb-3">
@@ -57,15 +54,13 @@ function GardeTimeline({ wine }: { wine: Wine }) {
           <Clock size={16} className="text-gold" />
           <h3 className="text-sm font-semibold">Garde</h3>
         </div>
-        {phase && <Badge variant={phaseVariant} className="capitalize">{phase}</Badge>}
+        <PhaseLabel phase={wine.currentPhase} />
       </div>
       <div className="relative h-5 bg-surface-hover rounded-full overflow-hidden mb-2">
-        {/* Peak zone */}
         <div
           className="absolute top-0 h-full bg-gold/25 rounded-full"
           style={{ left: `${peakStart}%`, width: `${peakEnd - peakStart}%` }}
         />
-        {/* Current position */}
         <div
           className="absolute top-0 w-1 h-full bg-accent-bright rounded-full shadow-[0_0_8px_rgba(212,74,58,0.7)]"
           style={{ left: `${position}%` }}
@@ -73,10 +68,14 @@ function GardeTimeline({ wine }: { wine: Wine }) {
       </div>
       <div className="flex justify-between text-[10px] text-text-muted font-mono">
         <span>{from}</span>
-        {wine.peakFrom && <span className="text-gold">Apogée {wine.peakFrom}–{wine.peakUntil}</span>}
+        {wine.peakFrom && (
+          <span className="text-gold">Apogée {wine.peakFrom}–{wine.peakUntil}</span>
+        )}
         <span>{until}</span>
       </div>
-      {wine.agingNotes && <p className="text-xs text-text-secondary mt-3 leading-relaxed">{wine.agingNotes}</p>}
+      {wine.agingNotes && (
+        <p className="text-xs text-text-secondary mt-3 leading-relaxed">{wine.agingNotes}</p>
+      )}
     </Card>
   );
 }
@@ -122,7 +121,7 @@ function AromaProfile({ wine }: { wine: Wine }) {
 }
 
 function Pairings({ wine }: { wine: Wine }) {
-  const hasAny = wine.pairingsIdeal?.length || wine.pairingsGood?.length || wine.cheesePairings?.length;
+  const hasAny = wine.pairingsIdeal?.length || wine.pairingsGood?.length || wine.cheesePairings?.length || wine.pairingsAvoid?.length;
   if (!hasAny) return null;
 
   return (
@@ -138,13 +137,13 @@ function Pairings({ wine }: { wine: Wine }) {
         </div>
       )}
       {!!wine.pairingsGood?.length && (
-        <div className="mb-2">
+        <div className="mb-3">
           <p className="text-[10px] uppercase tracking-wider text-text-muted mb-2">Bon accord</p>
           <div className="flex flex-wrap gap-1">{wine.pairingsGood.map((p, i) => <Badge key={i}>{p}</Badge>)}</div>
         </div>
       )}
       {!!wine.cheesePairings?.length && (
-        <div className="mb-2">
+        <div className="mb-3">
           <p className="text-[10px] uppercase tracking-wider text-champagne mb-2">Fromages</p>
           <div className="flex flex-wrap gap-1">{wine.cheesePairings.map((p, i) => <Badge key={i} variant="champagne">{p}</Badge>)}</div>
         </div>
@@ -159,107 +158,56 @@ function Pairings({ wine }: { wine: Wine }) {
   );
 }
 
-function QRSection({ wine }: { wine: Wine }) {
-  const [copied, setCopied] = useState(false);
-  const base = PUBLIC_BASE || window.location.origin;
-  const publicUrl = `${base}/public/wine/${wine.id}`;
-
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(publicUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  return (
-    <Card>
-      <div className="flex items-center gap-2 mb-4">
-        <QrCode size={16} className="text-text-secondary" />
-        <h3 className="text-sm font-semibold">QR Code / NFC</h3>
-      </div>
-      <div className="flex gap-4 items-start">
-        <div className="bg-surface-hover rounded-[var(--radius-md)] p-3 flex-shrink-0">
-          <QRCodeSVG
-            value={publicUrl}
-            size={120}
-            bgColor="transparent"
-            fgColor="#F5EDE0"
-            level="M"
-          />
-        </div>
-        <div className="flex-1 min-w-0 flex flex-col gap-3">
-          <p className="text-xs text-text-muted leading-relaxed">
-            Scanne ce QR ou programme un tag NFC avec l'URL ci-dessous pour accéder directement à la fiche.
-          </p>
-          <div className="bg-surface-hover rounded-[var(--radius-sm)] px-3 py-2 break-all">
-            <p className="font-mono text-[10px] text-text-secondary">{publicUrl}</p>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="ghost" size="sm" onClick={handleCopy} className="flex-1 gap-1.5">
-              {copied ? <Check size={13} className="text-success" /> : <Copy size={13} />}
-              {copied ? 'Copié !' : 'Copier'}
-            </Button>
-            <a href={publicUrl} target="_blank" rel="noopener noreferrer">
-              <Button variant="ghost" size="sm" className="gap-1.5">
-                <ExternalLink size={13} />
-                Voir
-              </Button>
-            </a>
-          </div>
-        </div>
-      </div>
-      {wine.nfcTagId && (
-        <p className="text-xs text-text-muted mt-3 font-mono">NFC ID: {wine.nfcTagId}</p>
-      )}
-    </Card>
-  );
-}
-
-export function WineDetail() {
+export function PublicWineDetail() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
-  const { toast } = useToast();
-  const { wines, pending, drinkWine, deleteWine } = useWineStore();
   const [wine, setWine] = useState<Wine | null>(null);
-  const [showDrink, setShowDrink] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
-    const found = [...wines, ...pending].find((w) => w.id === id);
-    if (found) {
-      setWine(found);
-    } else if (id) {
-      import('../lib/api').then(({ apiFetch }) =>
-        apiFetch(`/api/wines/${id}`).then((r) => r.json()).then(setWine).catch(() => navigate('/cave'))
-      );
-    }
-  }, [id, wines, pending, navigate]);
+    if (!id) return;
+    fetch(`/api/public/wines/${id}`)
+      .then((r) => {
+        if (!r.ok) { setNotFound(true); setLoading(false); return null; }
+        return r.json();
+      })
+      .then((data) => {
+        if (data) setWine(data);
+        setLoading(false);
+      })
+      .catch(() => { setNotFound(true); setLoading(false); });
+  }, [id]);
 
-  if (!wine) return null;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
-  const handleDrink = async () => {
-    setLoading(true);
-    try {
-      await drinkWine(wine.id);
-      toast('success', `${wine.name} débouchée !`);
-      setShowDrink(false);
-      if ((wine.quantity || 1) <= 1) navigate('/cave');
-    } catch {
-      toast('error', 'Erreur lors du débouchage');
-    }
-    setLoading(false);
-  };
-
-  const handleDelete = async () => {
-    await deleteWine(wine.id);
-    toast('success', 'Bouteille supprimée');
-    navigate('/cave');
-  };
+  if (notFound || !wine) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-3 text-text-muted px-4">
+        <XCircle size={40} />
+        <p className="text-sm text-center">Bouteille introuvable ou non disponible</p>
+        <Link to="/public" className="text-accent-bright text-sm underline">Retour à la cave</Link>
+      </div>
+    );
+  }
 
   return (
-    <div>
-      <PageHeader title={wine.name} back />
+    <div className="pb-10">
+      {/* Back */}
+      <Link
+        to="/public"
+        className="flex items-center gap-1.5 text-text-muted hover:text-text text-sm px-4 pt-4 pb-2 transition-colors"
+      >
+        <ChevronLeft size={16} />
+        La cave
+      </Link>
 
-      {/* Hero photo */}
+      {/* Hero */}
       {wine.photoUrl ? (
         <div className="relative h-72 overflow-hidden">
           <img src={wine.photoUrl} alt={wine.name} className="w-full h-full object-cover" />
@@ -269,11 +217,11 @@ export function WineDetail() {
         <div className={`h-40 bg-gradient-to-b ${typeHeroBg(wine.type)}`} />
       )}
 
-      <div className="px-4 max-w-lg mx-auto space-y-3 pb-8">
+      <div className="px-4 space-y-3 max-w-lg">
         {/* Identity */}
         <div className={wine.photoUrl ? '-mt-16 relative z-10' : 'pt-4'}>
           <div className={`pl-4 border-l-4 ${typeAccent(wine.type)}`}>
-            <h2 className="font-display text-2xl font-bold leading-tight">{wine.name}</h2>
+            <h2 className="font-display text-2xl font-bold text-text leading-tight">{wine.name}</h2>
             {wine.domain && <p className="text-text-secondary text-sm mt-0.5">{wine.domain}</p>}
             <p className="text-text-muted text-xs mt-0.5">
               {wine.vintage || 'Non millésimé'}
@@ -281,18 +229,21 @@ export function WineDetail() {
               {wine.classification ? ` · ${wine.classification}` : ''}
             </p>
           </div>
-          <div className="flex items-center gap-2 mt-3 pl-4 flex-wrap">
-            <Badge variant={wine.type?.toLowerCase() === 'rouge' ? 'red' : wine.type?.toLowerCase() === 'blanc' ? 'white' : 'champagne'}>
-              {wine.type}
-            </Badge>
+
+          <div className="flex items-center gap-2 mt-3 flex-wrap pl-4">
+            {wine.type && (
+              <Badge variant={wine.type.toLowerCase().includes('rouge') ? 'red' : wine.type.toLowerCase().includes('blanc') ? 'white' : 'champagne'}>
+                {wine.type}
+              </Badge>
+            )}
             {wine.classification && <Badge variant="gold">{wine.classification}</Badge>}
             {wine.slotIds?.[0] && (
               <div className="flex items-center gap-1 bg-surface border border-border rounded-[var(--radius-sm)] px-2 py-0.5">
                 <MapPin size={10} className="text-text-muted" />
-                <span className="font-mono text-[13px] text-text-secondary">{wine.slotIds[0]}</span>
+                <span className="font-mono text-[12px] text-text-secondary">{wine.slotIds[0]}</span>
               </div>
             )}
-            <span className="font-mono text-sm text-text-secondary">×{wine.quantity || 0}</span>
+            <span className="font-mono text-sm text-text-muted">×{wine.quantity ?? 0}</span>
           </div>
         </div>
 
@@ -309,6 +260,14 @@ export function WineDetail() {
           <Card>
             <h3 className="text-xs uppercase tracking-wider text-text-muted mb-2">En bouche</h3>
             <p className="text-sm text-text-secondary leading-relaxed">{wine.palate}</p>
+          </Card>
+        )}
+
+        {/* Vintage notes */}
+        {wine.vintageNotes && (
+          <Card>
+            <h3 className="text-xs uppercase tracking-wider text-text-muted mb-2">Millésime {wine.vintage}</h3>
+            <p className="text-sm text-text-secondary leading-relaxed">{wine.vintageNotes}</p>
           </Card>
         )}
 
@@ -363,30 +322,40 @@ export function WineDetail() {
           </Card>
         )}
 
-        {/* QR Code */}
-        {wine.importStatus === 'available' && <QRSection wine={wine} />}
+        {/* Rating perso */}
+        {wine.personalRating != null && wine.personalRating > 0 && (
+          <Card>
+            <div className="flex items-center gap-2">
+              <Star size={16} className="text-gold" />
+              <h3 className="text-sm font-semibold">Note personnelle</h3>
+              <span className="ml-auto font-display text-2xl font-bold text-gold">{wine.personalRating}<span className="text-xs text-text-muted">/100</span></span>
+            </div>
+            {wine.tastingNotes && (
+              <p className="text-xs text-text-secondary mt-2 leading-relaxed italic">{wine.tastingNotes}</p>
+            )}
+          </Card>
+        )}
 
-        {/* Actions */}
-        <div className="flex gap-3 pt-2">
-          <Button variant="primary" className="flex-1" onClick={() => setShowDrink(true)}>
-            Déboucher
-          </Button>
-          <Button variant="ghost" onClick={handleDelete}>
-            <Trash2 size={16} />
-          </Button>
-        </div>
+        {/* Valeur */}
+        {wine.estimatedValue && (
+          <Card>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-text-secondary">Valeur estimée</span>
+              <span className="font-display text-xl font-bold text-gold">{parseFloat(wine.estimatedValue).toFixed(0)} €</span>
+            </div>
+          </Card>
+        )}
+
+        {/* Mentions */}
+        {!!wine.mentions?.length && (
+          <Card>
+            <h3 className="text-xs uppercase tracking-wider text-text-muted mb-2">Mentions</h3>
+            <div className="flex flex-wrap gap-1.5">
+              {wine.mentions.map((m, i) => <Badge key={i}>{m}</Badge>)}
+            </div>
+          </Card>
+        )}
       </div>
-
-      {/* Drink confirmation */}
-      <BottomSheet open={showDrink} onClose={() => setShowDrink(false)} title="Déboucher cette bouteille ?">
-        <p className="text-sm text-text-secondary mb-4">
-          {wine.name} {wine.vintage && `(${wine.vintage})`} — il vous en restera {Math.max(0, (wine.quantity || 1) - 1)}.
-        </p>
-        <div className="flex gap-3">
-          <Button variant="ghost" className="flex-1" onClick={() => setShowDrink(false)}>Annuler</Button>
-          <Button variant="primary" className="flex-1" loading={loading} onClick={handleDrink}>Confirmer</Button>
-        </div>
-      </BottomSheet>
     </div>
   );
 }

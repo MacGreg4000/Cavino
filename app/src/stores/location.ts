@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { apiFetch } from '../lib/api';
 
 export interface GridConfig {
   rows: number;
@@ -55,7 +56,7 @@ export const useLocationStore = create<LocationState>((set) => ({
   fetchLocations: async () => {
     set({ loading: true });
     try {
-      const res = await fetch(`${API}/locations`);
+      const res = await apiFetch(`${API}/locations`);
       const locations = await res.json();
       set({ locations, loading: false });
     } catch {
@@ -64,14 +65,13 @@ export const useLocationStore = create<LocationState>((set) => ({
   },
 
   fetchGrid: async (id) => {
-    const res = await fetch(`${API}/locations/${id}/grid`);
+    const res = await apiFetch(`${API}/locations/${id}/grid`);
     return res.json();
   },
 
   createLocation: async (data) => {
-    const res = await fetch(`${API}/locations`, {
+    const res = await apiFetch(`${API}/locations`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
     const location = await res.json();
