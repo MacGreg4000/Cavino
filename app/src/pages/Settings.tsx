@@ -1,21 +1,45 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Settings as SettingsIcon, MapPin, Plus, Wine } from 'lucide-react';
+import { Settings as SettingsIcon, MapPin, Plus, Wine, RefreshCw } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { useLocationStore } from '../stores/location';
 import { useWineStore } from '../stores/wine';
+import { apiFetch } from '../lib/api';
+import { useToast } from '../components/ui/Toast';
 
 export function Settings() {
   const { locations, fetchLocations } = useLocationStore();
   const wines = useWineStore((s) => s.wines);
   const pendingCount = useWineStore((s) => s.pendingCount);
+  const { fetchPending } = useWineStore();
+  const { toast } = useToast();
+  const [scanning, setScanning] = useState(false);
 
   useEffect(() => {
     fetchLocations();
   }, [fetchLocations]);
+
+  const handleScan = async () => {
+    setScanning(true);
+    try {
+      const res = await apiFetch('/api/import/scan', { method: 'POST' });
+      const data = await res.json();
+      if (data.imported > 0) {
+        toast({ title: `${data.imported} bouteille(s) importée(s)`, variant: 'success' });
+        fetchPending();
+      } else if (data.errors?.length > 0) {
+        toast({ title: `Erreurs : ${data.errors[0]}`, variant: 'error' });
+      } else {
+        toast({ title: data.message || 'Aucun fichier à importer', variant: 'default' });
+      }
+    } catch {
+      toast({ title: 'Erreur lors du scan', variant: 'error' });
+    }
+    setScanning(false);
+  };
 
   return (
     <div>
@@ -47,6 +71,18 @@ export function Settings() {
               <Plus size={14} /> Ajouter un emplacement
             </Button>
           </Link>
+        </Card>
+
+        {/* Import */}
+        <Card>
+          <div className="flex items-center gap-2 mb-3">
+            <RefreshCw size={16} className="text-accent" />
+            <h3 className="text-sm font-semibold">Import inbox</h3>
+          </div>
+          <p className="text-xs text-text-muted mb-3">Scanne le dossier <span className="font-mono">data/inbox</span> et importe les fichiers JSON + photo présents.</p>
+          <Button variant="secondary" size="sm" loading={scanning} onClick={handleScan}>
+            <RefreshCw size={14} /> Lancer le scan
+          </Button>
         </Card>
 
         {/* Data summary */}

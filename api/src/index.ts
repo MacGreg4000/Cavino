@@ -11,6 +11,7 @@ import { statsRoutes } from './routes/stats.js';
 import { tastingRoutes } from './routes/tasting.js';
 import { advisorRoutes } from './routes/advisor.js';
 import { publicRoutes } from './routes/public.js';
+import { importRoutes } from './routes/import.js';
 import { startWatcher } from './watcher.js';
 import { addClient } from './websocket.js';
 
@@ -55,6 +56,7 @@ async function main() {
     await scoped.register(statsRoutes);
     await scoped.register(tastingRoutes);
     await scoped.register(advisorRoutes);
+    await scoped.register(importRoutes);
   });
 
   // DB connection check au démarrage
