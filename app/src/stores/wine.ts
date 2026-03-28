@@ -90,7 +90,9 @@ export const useWineStore = create<WineState>((set) => ({
     set({ loading: true, error: null });
     try {
       const res = await apiFetch(`${API}/wines`);
-      const wines = await res.json();
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const wines = Array.isArray(data) ? data : [];
       set({ wines, loading: false });
       // Cache for offline
       getOfflineDb().then(({ cacheWines }) => cacheWines(wines)).catch(() => {});
@@ -109,7 +111,9 @@ export const useWineStore = create<WineState>((set) => ({
   fetchPending: async () => {
     try {
       const res = await apiFetch(`${API}/wines/pending`);
-      const pending = await res.json();
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const pending = Array.isArray(data) ? data : [];
       set({ pending, pendingCount: pending.length });
     } catch {}
   },
