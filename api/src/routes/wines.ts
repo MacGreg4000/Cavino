@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { eq, ilike, and, sql, desc } from 'drizzle-orm';
+import { eq, ilike, and, ne, sql, desc } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { wines, gridSlots } from '../db/schema.js';
 import { z } from 'zod';
@@ -109,6 +109,31 @@ export async function wineRoutes(app: FastifyInstance) {
   app.post('/api/wines/:id/validate', async (req, reply) => {
     const { id } = req.params as { id: string };
     const body = validateSchema.parse(req.body);
+
+    // Check for duplicate before validation
+    const [current] = await db.select().from(wines).where(eq(wines.id, id));
+    if (!current) return reply.status(404).send({ error: 'Wine not found' });
+
+    const dupConditions = [
+      ilike(wines.name, current.name),
+      eq(wines.importStatus, 'available'),
+      ne(wines.id, id),
+    ];
+    if (current.domain) dupConditions.push(ilike(wines.domain, current.domain));
+    if (current.vintage) dupConditions.push(eq(wines.vintage, current.vintage));
+
+    const [dup] = await db.select({ id: wines.id, name: wines.name })
+      .from(wines)
+      .where(and(...dupConditions))
+      .limit(1);
+
+    if (dup) {
+      return reply.status(409).send({
+        error: 'duplicate',
+        message: `"${dup.name}" existe déjà dans votre cave`,
+        existingId: dup.id,
+      });
+    }
 
     // Assigner les slots
     if (body.slotIds.length > 0) {

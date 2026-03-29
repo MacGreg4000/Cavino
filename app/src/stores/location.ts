@@ -35,6 +35,7 @@ export interface GridSlot {
     vintage: number | null;
     domain: string | null;
     currentPhase: string | null;
+    photoUrl: string | null;
   } | null;
 }
 

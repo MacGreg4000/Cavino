@@ -34,8 +34,9 @@ function ValidationForm({ wine, onClose }: { wine: WineType; onClose: () => void
       });
       toast('success', `${wine.name} ajoutée à la cave !`);
       onClose();
-    } catch {
-      toast('error', 'Erreur de validation');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erreur de validation';
+      toast('error', msg);
     }
     setLoading(false);
   };

@@ -52,15 +52,31 @@ export function GridCell({ slot, label, onClick, highlight }: GridCellProps) {
         ${highlight ? 'animate-pulse-gold ring-1 ring-gold/50' : ''}
       `}
     >
-      {isOccupied && (
-        <Wine size={16} className={colorClass} strokeWidth={2} />
+      {isOccupied && slot.wine?.photoUrl ? (
+        <>
+          <img
+            src={slot.wine.photoUrl}
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover rounded-[var(--radius-sm)]"
+          />
+          <div className="absolute inset-0 bg-black/20 rounded-[var(--radius-sm)]" />
+          <span className="relative font-mono text-[9px] leading-none text-white drop-shadow-md">
+            {label}
+          </span>
+        </>
+      ) : (
+        <>
+          {isOccupied && (
+            <Wine size={16} className={colorClass} strokeWidth={2} />
+          )}
+          {isEmpty && (
+            <div className="w-2 h-2 rounded-full bg-border-subtle" />
+          )}
+          <span className="font-mono text-[9px] leading-none text-text-muted">
+            {label}
+          </span>
+        </>
       )}
-      {isEmpty && (
-        <div className="w-2 h-2 rounded-full bg-border-subtle" />
-      )}
-      <span className="font-mono text-[9px] leading-none text-text-muted">
-        {label}
-      </span>
     </button>
   );
 }

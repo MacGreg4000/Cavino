@@ -97,6 +97,7 @@ export async function locationRoutes(app: FastifyInstance) {
         vintage: wines.vintage,
         domain: wines.domain,
         currentPhase: wines.currentPhase,
+        photoUrl: wines.photoUrl,
       },
     })
       .from(gridSlots)

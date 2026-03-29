@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import { eq, and, ilike } from 'drizzle-orm';
 import { db } from './db/index.js';
 import { wines } from './db/schema.js';
 import { wineImportSchema } from './schemas/wine-import.js';
@@ -27,6 +28,21 @@ export async function importWinePair({ jsonPath, photoPath }: ImportInput): Prom
     }
 
     const data = parsed.data;
+
+    // Check for duplicate (same name + domain + vintage)
+    const dupConditions = [ilike(wines.name, data.identity.name)];
+    if (data.identity.domain) dupConditions.push(ilike(wines.domain, data.identity.domain));
+    if (data.identity.vintage) dupConditions.push(eq(wines.vintage, data.identity.vintage));
+
+    const [existing] = await db.select({ id: wines.id, name: wines.name, importStatus: wines.importStatus })
+      .from(wines)
+      .where(and(...dupConditions))
+      .limit(1);
+
+    if (existing) {
+      return { success: false, error: `Doublon détecté : "${existing.name}" existe déjà dans la cave` };
+    }
+
     const wineId = uuidv4();
 
     // Copier la photo si elle existe

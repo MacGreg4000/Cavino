@@ -123,7 +123,10 @@ export const useWineStore = create<WineState>((set) => ({
       method: 'POST',
       body: JSON.stringify(data),
     });
-    if (!res.ok) throw new Error('Validation failed');
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.message || 'Validation failed');
+    }
     const updated = await res.json();
 
     set((s) => ({
