@@ -1,12 +1,12 @@
 #!/bin/bash
 # ──────────────────────────────────────────────
-# Caveau — Installation
+# Cavino — Installation
 # ──────────────────────────────────────────────
 
 set -e
 
 echo ""
-echo "  🍷  Caveau — Installation"
+echo "  🍷  Cavino — Installation"
 echo "  ─────────────────────────"
 echo ""
 
@@ -26,7 +26,7 @@ echo ""
 docker compose up -d --build
 
 echo ""
-echo "  ✅  Caveau est prêt !"
+echo "  ✅  Cavino est prêt !"
 echo ""
 echo "  📱  Ouvrez : http://$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'localhost'):3000"
 echo ""

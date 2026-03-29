@@ -2,7 +2,7 @@ import Dexie, { type Table } from 'dexie';
 import type { Wine } from '../stores/wine';
 import type { Location } from '../stores/location';
 
-export class CaveauDB extends Dexie {
+export class CavinoDB extends Dexie {
   wines!: Table<Wine, string>;
   locations!: Table<Location, string>;
 
@@ -15,7 +15,7 @@ export class CaveauDB extends Dexie {
   }
 }
 
-export const offlineDb = new CaveauDB();
+export const offlineDb = new CavinoDB();
 
 // Sync helpers: cache API responses in IndexedDB
 export async function cacheWines(wines: Wine[]) {

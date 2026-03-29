@@ -6,9 +6,10 @@ import { Select } from '../ui/Select';
 interface SlotPickerProps {
   selectedSlots: string[];
   onSelect: (slotIds: string[], locationId: string) => void;
+  maxSlots?: number;
 }
 
-export function SlotPicker({ selectedSlots, onSelect }: SlotPickerProps) {
+export function SlotPicker({ selectedSlots, onSelect, maxSlots }: SlotPickerProps) {
   const { locations, fetchLocations, fetchGrid } = useLocationStore();
   const [selectedLocation, setSelectedLocation] = useState<string>('');
   const [gridData, setGridData] = useState<{ location: Location; slots: GridSlot[] } | null>(null);
@@ -33,7 +34,11 @@ export function SlotPicker({ selectedSlots, onSelect }: SlotPickerProps) {
     if (slot.slot.isBlocked || slot.wine) return; // Can't pick occupied or blocked
 
     const slotId = slot.slot.id;
-    const newSelection = selectedSlots.includes(slotId)
+    const isDeselecting = selectedSlots.includes(slotId);
+
+    if (!isDeselecting && maxSlots !== undefined && selectedSlots.length >= maxSlots) return;
+
+    const newSelection = isDeselecting
       ? selectedSlots.filter((s) => s !== slotId)
       : [...selectedSlots, slotId];
 

@@ -27,7 +27,7 @@ export function Home() {
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="font-display text-3xl font-bold tracking-tight">Caveau</h1>
+          <h1 className="font-display text-3xl font-bold tracking-tight">Cavino</h1>
           <p className="text-text-muted text-sm mt-1">Votre cave personnelle</p>
         </div>
         <Link to="/settings" className="p-2 text-text-muted hover:text-text transition-colors mt-1">

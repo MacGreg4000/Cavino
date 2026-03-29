@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Thermometer, Clock, GlassWater, Grape, MapPin, Award, Trash2,
-  QrCode, Copy, Check, UtensilsCrossed, ExternalLink
+  QrCode, Copy, Check, UtensilsCrossed, ExternalLink, Maximize2, X
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { PageHeader } from '../components/layout/PageHeader';
@@ -221,6 +221,8 @@ export function WineDetail() {
   const { wines, pending, drinkWine, deleteWine } = useWineStore();
   const [wine, setWine] = useState<Wine | null>(null);
   const [showDrink, setShowDrink] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
+  const [showPhoto, setShowPhoto] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -250,9 +252,16 @@ export function WineDetail() {
   };
 
   const handleDelete = async () => {
-    await deleteWine(wine.id);
-    toast('success', 'Bouteille supprimée');
-    navigate('/cave');
+    setLoading(true);
+    try {
+      await deleteWine(wine.id);
+      toast('success', 'Bouteille supprimée');
+      setShowDelete(false);
+      navigate('/cave');
+    } catch {
+      toast('error', 'Erreur lors de la suppression');
+    }
+    setLoading(false);
   };
 
   return (
@@ -261,9 +270,12 @@ export function WineDetail() {
 
       {/* Hero photo */}
       {wine.photoUrl ? (
-        <div className="relative h-72 overflow-hidden">
+        <div className="relative h-72 overflow-hidden cursor-pointer group" onClick={() => setShowPhoto(true)}>
           <img src={wine.photoUrl} alt={wine.name} className="w-full h-full object-cover" />
           <div className="absolute inset-0 bg-gradient-to-t from-bg via-bg/50 to-transparent" />
+          <div className="absolute top-3 right-3 bg-black/50 rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+            <Maximize2 size={16} className="text-white" />
+          </div>
         </div>
       ) : (
         <div className={`h-40 bg-gradient-to-b ${typeHeroBg(wine.type)}`} />
@@ -364,18 +376,29 @@ export function WineDetail() {
         )}
 
         {/* QR Code */}
-        {wine.importStatus === 'available' && <QRSection wine={wine} />}
+        {wine.importStatus !== 'consumed' && <QRSection wine={wine} />}
 
         {/* Actions */}
         <div className="flex gap-3 pt-2">
           <Button variant="primary" className="flex-1" onClick={() => setShowDrink(true)}>
             Déboucher
           </Button>
-          <Button variant="ghost" onClick={handleDelete}>
+          <Button variant="ghost" onClick={() => setShowDelete(true)}>
             <Trash2 size={16} />
           </Button>
         </div>
       </div>
+
+      {/* Delete confirmation */}
+      <BottomSheet open={showDelete} onClose={() => setShowDelete(false)} title="Supprimer cette bouteille ?">
+        <p className="text-sm text-text-secondary mb-4">
+          {wine.name} {wine.vintage && `(${wine.vintage})`} sera définitivement supprimée de votre cave.
+        </p>
+        <div className="flex gap-3">
+          <Button variant="ghost" className="flex-1" onClick={() => setShowDelete(false)}>Annuler</Button>
+          <Button variant="primary" className="flex-1 !bg-danger" loading={loading} onClick={handleDelete}>Supprimer</Button>
+        </div>
+      </BottomSheet>
 
       {/* Drink confirmation */}
       <BottomSheet open={showDrink} onClose={() => setShowDrink(false)} title="Déboucher cette bouteille ?">
@@ -387,6 +410,16 @@ export function WineDetail() {
           <Button variant="primary" className="flex-1" loading={loading} onClick={handleDrink}>Confirmer</Button>
         </div>
       </BottomSheet>
+
+      {/* Photo lightbox */}
+      {showPhoto && wine.photoUrl && (
+        <div className="fixed inset-0 z-50 bg-black flex items-center justify-center" onClick={() => setShowPhoto(false)}>
+          <button className="absolute top-4 right-4 bg-white/20 rounded-full p-2 hover:bg-white/30 transition-colors" onClick={() => setShowPhoto(false)}>
+            <X size={24} className="text-white" />
+          </button>
+          <img src={wine.photoUrl} alt={wine.name} className="max-w-full max-h-full object-contain p-4" />
+        </div>
+      )}
     </div>
   );
 }

@@ -32,7 +32,7 @@ export function Login() {
         <div className="w-16 h-16 rounded-2xl bg-accent/20 flex items-center justify-center border border-accent/30">
           <Wine size={32} className="text-accent-bright" />
         </div>
-        <h1 className="font-display text-4xl font-bold tracking-tight text-text">Caveau</h1>
+        <h1 className="font-display text-4xl font-bold tracking-tight text-text">Cavino</h1>
         <p className="text-text-muted text-sm">Accès privé</p>
       </div>
 

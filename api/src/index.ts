@@ -72,7 +72,7 @@ async function main() {
 
   // Démarrer le serveur
   await app.listen({ port: PORT, host: '0.0.0.0' });
-  console.log(`🚀 Caveau API running on port ${PORT}`);
+  console.log(`🚀 Cavino API running on port ${PORT}`);
 }
 
 main().catch((err) => {

@@ -1,4 +1,4 @@
-# Caveau — Wine Cellar PWA
+# Cavino — Wine Cellar PWA
 
 ## Architecture
 - Monorepo: `/app` (React PWA) + `/api` (Fastify API)

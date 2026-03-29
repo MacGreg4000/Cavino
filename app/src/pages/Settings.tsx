@@ -78,7 +78,7 @@ export function Settings() {
             <h3 className="text-sm font-semibold">À propos</h3>
           </div>
           <div className="space-y-1 text-sm text-text-secondary">
-            <p>Caveau v4.0</p>
+            <p>Cavino v4.0</p>
             <p>Cave Noire — Luxury Dark</p>
             <p className="text-text-muted text-xs mt-2">Architecture offline-first, zéro IA en production</p>
           </div>
