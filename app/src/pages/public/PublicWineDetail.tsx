@@ -217,7 +217,7 @@ export function PublicWineDetail() {
         <div className={`h-40 bg-gradient-to-b ${typeHeroBg(wine.type)}`} />
       )}
 
-      <div className="px-4 space-y-3 max-w-lg">
+      <div className="px-4 space-y-3 max-w-lg mx-auto">
         {/* Identity */}
         <div className={wine.photoUrl ? '-mt-16 relative z-10' : 'pt-4'}>
           <div className={`pl-4 border-l-4 ${typeAccent(wine.type)}`}>

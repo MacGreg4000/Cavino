@@ -7,9 +7,10 @@ interface CellarGridProps {
   slots: GridSlot[];
   onSlotClick?: (slot: GridSlot) => void;
   highlightSlots?: string[];
+  compact?: boolean;
 }
 
-export function CellarGrid({ location, slots, onSlotClick, highlightSlots = [] }: CellarGridProps) {
+export function CellarGrid({ location, slots, onSlotClick, highlightSlots = [], compact = false }: CellarGridProps) {
   const config = location.gridConfig;
   if (!config) return null;
 
@@ -21,12 +22,15 @@ export function CellarGrid({ location, slots, onSlotClick, highlightSlots = [] }
     slotMap.set(`${s.slot.rowIndex}-${s.slot.colIndex}`, s);
   }
 
+  const cellSize = compact ? '1.75rem' : '1fr';
+  const colTemplate = `repeat(${cols}, minmax(0, ${cellSize}))`;
+
   return (
     <div className="space-y-2">
       {/* Column headers */}
       <div
         className="grid gap-1 pl-7"
-        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+        style={{ gridTemplateColumns: colTemplate }}
       >
         {labelCols.map((label, c) => (
           <div key={c} className="text-center text-[10px] font-mono text-text-muted">
@@ -45,8 +49,8 @@ export function CellarGrid({ location, slots, onSlotClick, highlightSlots = [] }
 
           {/* Row cells */}
           <div
-            className="grid gap-1 flex-1"
-            style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+            className="grid gap-1"
+            style={{ gridTemplateColumns: colTemplate }}
           >
             {Array.from({ length: cols }, (_, c) => {
               const key = `${r}-${c}`;

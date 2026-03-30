@@ -68,6 +68,7 @@ export function SlotPicker({ selectedSlots, onSelect, maxSlots }: SlotPickerProp
           slots={gridData.slots}
           onSlotClick={handleSlotClick}
           highlightSlots={selectedSlots}
+          compact
         />
       )}
     </div>
