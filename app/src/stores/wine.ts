@@ -69,6 +69,7 @@ interface WineState {
   fetchWines: () => Promise<void>;
   fetchPending: () => Promise<void>;
   validateWine: (id: string, data: { quantity: number; slotIds?: string[]; locationId?: string; purchasePrice?: number }) => Promise<void>;
+  updateWine: (id: string, data: { slotIds?: string[]; locationId?: string; quantity?: number }) => Promise<Wine>;
   drinkWine: (id: string) => Promise<void>;
   deleteWine: (id: string) => Promise<void>;
   addPendingFromWs: (wine: Wine) => void;
@@ -134,6 +135,19 @@ export const useWineStore = create<WineState>((set) => ({
       pending: s.pending.filter((w) => w.id !== id),
       pendingCount: s.pendingCount - 1,
     }));
+  },
+
+  updateWine: async (id, data) => {
+    const res = await apiFetch(`${API}/wines/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('Update failed');
+    const updated: Wine = await res.json();
+    set((s) => ({
+      wines: s.wines.map((w) => (w.id === id ? updated : w)),
+    }));
+    return updated;
   },
 
   drinkWine: async (id) => {

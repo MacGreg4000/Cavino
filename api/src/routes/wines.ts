@@ -74,6 +74,23 @@ export async function wineRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const body = wineUpdateSchema.parse(req.body);
 
+    // Handle slot reassignment if slotIds provided
+    if (body.slotIds !== undefined) {
+      // Free all slots currently assigned to this wine
+      await db.update(gridSlots)
+        .set({ wineId: null })
+        .where(eq(gridSlots.wineId, id));
+
+      // Assign the new slots
+      if (body.slotIds.length > 0) {
+        for (const slotId of body.slotIds) {
+          await db.update(gridSlots)
+            .set({ wineId: id })
+            .where(eq(gridSlots.id, slotId));
+        }
+      }
+    }
+
     const updates: Record<string, unknown> = { ...body, updatedAt: new Date() };
 
     // Convert numeric fields to strings for Drizzle numeric columns

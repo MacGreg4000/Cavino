@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Thermometer, Clock, GlassWater, Grape, MapPin, Award, Trash2,
-  QrCode, Copy, Check, UtensilsCrossed, ExternalLink, Maximize2, X
+  QrCode, Copy, Check, UtensilsCrossed, ExternalLink, Maximize2, X, PencilLine
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { PageHeader } from '../components/layout/PageHeader';
@@ -10,6 +10,7 @@ import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { BottomSheet } from '../components/ui/BottomSheet';
+import { SlotPicker } from '../components/cellar/SlotPicker';
 import { useWineStore, type Wine } from '../stores/wine';
 import { useToast } from '../components/ui/Toast';
 
@@ -218,12 +219,16 @@ export function WineDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { wines, pending, drinkWine, deleteWine } = useWineStore();
+  const { wines, pending, drinkWine, deleteWine, updateWine } = useWineStore();
   const [wine, setWine] = useState<Wine | null>(null);
   const [showDrink, setShowDrink] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
   const [showPhoto, setShowPhoto] = useState(false);
+  const [showSlotPicker, setShowSlotPicker] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [slotLoading, setSlotLoading] = useState(false);
+  const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
+  const [selectedLocationId, setSelectedLocationId] = useState<string>('');
 
   useEffect(() => {
     const found = [...wines, ...pending].find((w) => w.id === id);
@@ -237,6 +242,28 @@ export function WineDetail() {
   }, [id, wines, pending, navigate]);
 
   if (!wine) return null;
+
+  const handleOpenSlotPicker = () => {
+    setSelectedSlots(wine.slotIds ?? []);
+    setSelectedLocationId(wine.locationId ?? '');
+    setShowSlotPicker(true);
+  };
+
+  const handleSaveSlots = async () => {
+    setSlotLoading(true);
+    try {
+      const updated = await updateWine(wine.id, {
+        slotIds: selectedSlots,
+        locationId: selectedLocationId || undefined,
+      });
+      setWine(updated);
+      toast('success', 'Emplacement mis à jour');
+      setShowSlotPicker(false);
+    } catch {
+      toast('error', 'Erreur lors de la mise à jour');
+    }
+    setSlotLoading(false);
+  };
 
   const handleDrink = async () => {
     setLoading(true);
@@ -298,11 +325,27 @@ export function WineDetail() {
               {wine.type}
             </Badge>
             {wine.classification && <Badge variant="gold">{wine.classification}</Badge>}
-            {wine.slotIds?.[0] && (
-              <div className="flex items-center gap-1 bg-surface border border-border rounded-[var(--radius-sm)] px-2 py-0.5">
+            {wine.slotIds?.[0] ? (
+              <button
+                type="button"
+                onClick={handleOpenSlotPicker}
+                className="flex items-center gap-1 bg-surface border border-border rounded-[var(--radius-sm)] px-2 py-0.5 hover:border-accent transition-colors"
+              >
                 <MapPin size={10} className="text-text-muted" />
-                <span className="font-mono text-[13px] text-text-secondary">{wine.slotIds[0]}</span>
-              </div>
+                <span className="font-mono text-[13px] text-text-secondary">
+                  {wine.slotIds.join(', ')}
+                </span>
+                <PencilLine size={10} className="text-text-muted ml-0.5" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleOpenSlotPicker}
+                className="flex items-center gap-1 border border-dashed border-border rounded-[var(--radius-sm)] px-2 py-0.5 hover:border-accent transition-colors"
+              >
+                <MapPin size={10} className="text-text-muted" />
+                <span className="text-[11px] text-text-muted">Assigner un emplacement</span>
+              </button>
             )}
             <span className="font-mono text-sm text-text-secondary">×{wine.quantity || 0}</span>
           </div>
@@ -408,6 +451,23 @@ export function WineDetail() {
         <div className="flex gap-3">
           <Button variant="ghost" className="flex-1" onClick={() => setShowDrink(false)}>Annuler</Button>
           <Button variant="primary" className="flex-1" loading={loading} onClick={handleDrink}>Confirmer</Button>
+        </div>
+      </BottomSheet>
+
+      {/* Slot picker */}
+      <BottomSheet open={showSlotPicker} onClose={() => setShowSlotPicker(false)} title="Changer l'emplacement">
+        <div className="space-y-4">
+          <SlotPicker
+            selectedSlots={selectedSlots}
+            onSelect={(slots, locId) => { setSelectedSlots(slots); setSelectedLocationId(locId); }}
+            maxSlots={wine.quantity || 1}
+          />
+          <div className="flex gap-3 pt-2">
+            <Button variant="ghost" className="flex-1" onClick={() => setShowSlotPicker(false)}>Annuler</Button>
+            <Button variant="primary" className="flex-1" loading={slotLoading} onClick={handleSaveSlots}>
+              <Check size={14} /> Enregistrer
+            </Button>
+          </div>
         </div>
       </BottomSheet>
 
