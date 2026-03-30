@@ -182,7 +182,7 @@ function QRSection({ wine }: { wine: Wine }) {
             value={publicUrl}
             size={120}
             bgColor="transparent"
-            fgColor="#F5EDE0"
+            fgColor="#1A1310"
             level="M"
           />
         </div>
