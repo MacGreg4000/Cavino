@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '../../components/ui/Badge';
 import { Card } from '../../components/ui/Card';
+import { WinePhoto } from '../../components/ui/WinePhoto';
 import type { Wine } from '../../stores/wine';
 
 function typeAccent(type?: string): string {
@@ -209,8 +210,8 @@ export function PublicWineDetail() {
 
       {/* Hero */}
       {wine.photoUrl ? (
-        <div className="relative h-72 overflow-hidden">
-          <img src={wine.photoUrl} alt={wine.name} className="w-full h-full object-cover" />
+        <div className="relative h-72">
+          <WinePhoto src={wine.photoUrl} alt={wine.name} className="h-full w-full" />
           <div className="absolute inset-0 bg-gradient-to-t from-bg via-bg/50 to-transparent" />
         </div>
       ) : (

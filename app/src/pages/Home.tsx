@@ -61,7 +61,7 @@ export function Home() {
   }, [fetchWines, fetchPending]);
 
   const totalBottles = wines.reduce((sum, w) => sum + (w.quantity || 0), 0);
-  const totalValue = wines.reduce((sum, w) => sum + (parseFloat(w.estimatedValue || '0') || 0), 0);
+  const totalValue = wines.reduce((sum, w) => sum + (parseFloat(w.estimatedValue || '0') || 0) * (w.quantity || 1), 0);
 
   const currentYear = new Date().getFullYear();
   const drinkSoon = wines.filter((w) => w.drinkUntil && w.drinkUntil <= currentYear);

@@ -12,6 +12,7 @@ import { Button } from '../components/ui/Button';
 import { BottomSheet } from '../components/ui/BottomSheet';
 import { SlotPicker } from '../components/cellar/SlotPicker';
 import { Stepper } from '../components/ui/Stepper';
+import { WinePhoto } from '../components/ui/WinePhoto';
 import { useWineStore, type Wine } from '../stores/wine';
 import { useToast } from '../components/ui/Toast';
 
@@ -318,8 +319,8 @@ export function WineDetail() {
 
       {/* Hero photo */}
       {wine.photoUrl ? (
-        <div className="relative h-72 overflow-hidden cursor-pointer group" onClick={() => setShowPhoto(true)}>
-          <img src={wine.photoUrl} alt={wine.name} className="w-full h-full object-cover" />
+        <div className="relative h-72 cursor-pointer group" onClick={() => setShowPhoto(true)}>
+          <WinePhoto src={wine.photoUrl} alt={wine.name} className="h-full w-full" />
           <div className="absolute inset-0 bg-gradient-to-t from-bg via-bg/50 to-transparent" />
           <div className="absolute top-3 right-3 bg-black/50 rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
             <Maximize2 size={16} className="text-white" />

@@ -6,6 +6,7 @@ import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { SearchBar } from '../components/ui/Input';
 import { EmptyState } from '../components/ui/EmptyState';
+import { WinePhoto } from '../components/ui/WinePhoto';
 import { useWineStore, type Wine as WineType } from '../stores/wine';
 
 const wineTypeVariant = (type?: string) => {
@@ -92,9 +93,7 @@ function WineGridCard({ wine }: { wine: WineType }) {
     <Link to={`/cave/${wine.id}`}>
       <div className={`bg-surface rounded-[var(--radius-md)] border border-border border-t-4 ${typeLeftBorder(wine.type).replace('border-l-', 'border-t-')} overflow-hidden hover:bg-surface-hover transition-colors active:scale-[0.99]`}>
         {wine.photoUrl ? (
-          <div className="aspect-[3/4] overflow-hidden">
-            <img src={wine.photoUrl} alt="" className="w-full h-full object-cover" />
-          </div>
+          <WinePhoto src={wine.photoUrl} className="aspect-[3/4]" />
         ) : (
           <div className="aspect-[3/4] bg-surface-hover flex items-center justify-center">
             <Wine size={28} className="text-text-muted" />

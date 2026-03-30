@@ -54,12 +54,20 @@ export function GridCell({ slot, label, onClick, highlight }: GridCellProps) {
     >
       {isOccupied && slot.wine?.photoUrl ? (
         <>
+          {/* Blurred fill */}
           <img
             src={slot.wine.photoUrl}
             alt=""
-            className="absolute inset-0 w-full h-full object-cover rounded-[var(--radius-sm)]"
+            aria-hidden
+            className="absolute inset-0 w-full h-full object-cover scale-110 blur-md opacity-60 rounded-[var(--radius-sm)]"
           />
-          <div className="absolute inset-0 bg-black/20 rounded-[var(--radius-sm)]" />
+          {/* Sharp centered */}
+          <img
+            src={slot.wine.photoUrl}
+            alt=""
+            className="absolute inset-0 w-full h-full object-contain rounded-[var(--radius-sm)]"
+          />
+          <div className="absolute inset-0 bg-black/10 rounded-[var(--radius-sm)]" />
           <span className="relative font-mono text-[9px] leading-none text-white drop-shadow-md">
             {label}
           </span>
