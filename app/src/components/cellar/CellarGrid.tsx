@@ -26,7 +26,7 @@ export function CellarGrid({ location, slots, onSlotClick, highlightSlots = [], 
   const colTemplate = `repeat(${cols}, minmax(0, ${cellSize}))`;
 
   return (
-    <div className="space-y-2">
+    <div className={`space-y-2 ${compact ? 'w-fit mx-auto' : ''}`}>
       {/* Column headers */}
       <div
         className="grid gap-1 pl-7"
@@ -49,7 +49,7 @@ export function CellarGrid({ location, slots, onSlotClick, highlightSlots = [], 
 
           {/* Row cells */}
           <div
-            className="grid gap-1"
+            className={`grid gap-1 ${compact ? '' : 'flex-1'}`}
             style={{ gridTemplateColumns: colTemplate }}
           >
             {Array.from({ length: cols }, (_, c) => {

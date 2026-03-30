@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Thermometer, Clock, GlassWater, Grape, MapPin, Award, Trash2,
-  QrCode, Copy, Check, UtensilsCrossed, ExternalLink, Maximize2, X, PencilLine
+  QrCode, Copy, Check, UtensilsCrossed, ExternalLink, Maximize2, X, PencilLine, Package
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { PageHeader } from '../components/layout/PageHeader';
@@ -11,6 +11,7 @@ import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { BottomSheet } from '../components/ui/BottomSheet';
 import { SlotPicker } from '../components/cellar/SlotPicker';
+import { Stepper } from '../components/ui/Stepper';
 import { useWineStore, type Wine } from '../stores/wine';
 import { useToast } from '../components/ui/Toast';
 
@@ -225,6 +226,8 @@ export function WineDetail() {
   const [showDelete, setShowDelete] = useState(false);
   const [showPhoto, setShowPhoto] = useState(false);
   const [showSlotPicker, setShowSlotPicker] = useState(false);
+  const [showQuantity, setShowQuantity] = useState(false);
+  const [editQuantity, setEditQuantity] = useState(1);
   const [loading, setLoading] = useState(false);
   const [slotLoading, setSlotLoading] = useState(false);
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
@@ -263,6 +266,24 @@ export function WineDetail() {
       toast('error', 'Erreur lors de la mise à jour');
     }
     setSlotLoading(false);
+  };
+
+  const handleOpenQuantity = () => {
+    setEditQuantity(wine.quantity || 1);
+    setShowQuantity(true);
+  };
+
+  const handleSaveQuantity = async () => {
+    setLoading(true);
+    try {
+      const updated = await updateWine(wine.id, { quantity: editQuantity });
+      setWine(updated);
+      toast('success', `Quantité mise à jour : ${editQuantity}`);
+      setShowQuantity(false);
+    } catch {
+      toast('error', 'Erreur lors de la mise à jour');
+    }
+    setLoading(false);
   };
 
   const handleDrink = async () => {
@@ -347,7 +368,15 @@ export function WineDetail() {
                 <span className="text-[11px] text-text-muted">Assigner un emplacement</span>
               </button>
             )}
-            <span className="font-mono text-sm text-text-secondary">×{wine.quantity || 0}</span>
+            <button
+              type="button"
+              onClick={handleOpenQuantity}
+              className="flex items-center gap-1 bg-surface border border-border rounded-[var(--radius-sm)] px-2 py-0.5 hover:border-accent transition-colors"
+            >
+              <Package size={10} className="text-text-muted" />
+              <span className="font-mono text-sm text-text-secondary">×{wine.quantity || 0}</span>
+              <PencilLine size={10} className="text-text-muted ml-0.5" />
+            </button>
           </div>
         </div>
 
@@ -465,6 +494,22 @@ export function WineDetail() {
           <div className="flex gap-3 pt-2">
             <Button variant="ghost" className="flex-1" onClick={() => setShowSlotPicker(false)}>Annuler</Button>
             <Button variant="primary" className="flex-1" loading={slotLoading} onClick={handleSaveSlots}>
+              <Check size={14} /> Enregistrer
+            </Button>
+          </div>
+        </div>
+      </BottomSheet>
+
+      {/* Quantity editor */}
+      <BottomSheet open={showQuantity} onClose={() => setShowQuantity(false)} title="Modifier la quantité">
+        <div className="space-y-4">
+          <p className="text-sm text-text-secondary">
+            Nombre de bouteilles de {wine.name} dans votre cave.
+          </p>
+          <Stepper value={editQuantity} onChange={setEditQuantity} min={1} label="Quantité" />
+          <div className="flex gap-3 pt-2">
+            <Button variant="ghost" className="flex-1" onClick={() => setShowQuantity(false)}>Annuler</Button>
+            <Button variant="primary" className="flex-1" loading={loading} onClick={handleSaveQuantity}>
               <Check size={14} /> Enregistrer
             </Button>
           </div>
