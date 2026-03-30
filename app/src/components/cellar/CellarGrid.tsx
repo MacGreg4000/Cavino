@@ -1,3 +1,4 @@
+import React from 'react';
 import { Wine } from 'lucide-react';
 import { GridCell } from './GridCell';
 import type { GridSlot, Location } from '../../stores/location';
@@ -22,40 +23,40 @@ export function CellarGrid({ location, slots, onSlotClick, highlightSlots = [], 
     slotMap.set(`${s.slot.rowIndex}-${s.slot.colIndex}`, s);
   }
 
-  const cellSize = compact ? '1.75rem' : '1fr';
-  const colTemplate = `repeat(${cols}, minmax(0, ${cellSize}))`;
+  // Use a single CSS grid for the entire board (label column + data columns)
+  // This guarantees perfect alignment between headers and cells
+  const gridCols = compact
+    ? `1.75rem repeat(${cols}, 1.75rem)`
+    : `1.75rem repeat(${cols}, 1fr)`;
 
   return (
     <div className={`space-y-2 ${compact ? 'w-fit mx-auto' : ''}`}>
-      {/* Column headers */}
       <div
-        className="grid gap-1 pl-7"
-        style={{ gridTemplateColumns: colTemplate }}
+        className="grid gap-1"
+        style={{ gridTemplateColumns: gridCols }}
       >
+        {/* Top-left corner (empty) */}
+        <div />
+        {/* Column headers */}
         {labelCols.map((label, c) => (
           <div key={c} className="text-center text-[10px] font-mono text-text-muted">
             {label}
           </div>
         ))}
-      </div>
 
-      {/* Grid rows */}
-      {Array.from({ length: rows }, (_, r) => (
-        <div key={r} className="flex gap-1 items-center">
-          {/* Row label */}
-          <div className="w-6 text-right text-[10px] font-mono text-text-muted shrink-0">
-            {labelRows[r]}
-          </div>
+        {/* Grid rows: row label + cells */}
+        {Array.from({ length: rows }, (_, r) => (
+          <React.Fragment key={r}>
+            {/* Row label */}
+            <div className="text-right text-[10px] font-mono text-text-muted flex items-center justify-end">
+              {labelRows[r]}
+            </div>
 
-          {/* Row cells */}
-          <div
-            className={`grid gap-1 ${compact ? '' : 'flex-1'}`}
-            style={{ gridTemplateColumns: colTemplate }}
-          >
+            {/* Row cells */}
             {Array.from({ length: cols }, (_, c) => {
               const key = `${r}-${c}`;
               const slot = slotMap.get(key);
-              if (!slot) return <div key={c} />;
+              if (!slot) return <div key={`${r}-${c}`} />;
 
               const label = `${labelRows[r]}${labelCols[c]}`;
               return (
@@ -68,12 +69,12 @@ export function CellarGrid({ location, slots, onSlotClick, highlightSlots = [], 
                 />
               );
             })}
-          </div>
-        </div>
-      ))}
+          </React.Fragment>
+        ))}
+      </div>
 
       {/* Legend */}
-      <div className="flex items-center gap-4 pt-2 px-7 text-[10px] text-text-muted">
+      <div className="flex items-center gap-4 pt-2 pl-8 text-[10px] text-text-muted">
         <span className="flex items-center gap-1">
           <Wine size={10} className="text-wine-red" /> Rouge
         </span>
