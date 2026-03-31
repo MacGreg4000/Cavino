@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Thermometer, Clock, GlassWater, Grape, MapPin, Award, Trash2,
-  QrCode, Copy, Check, UtensilsCrossed, ExternalLink, Maximize2, X, PencilLine, Package
+  QrCode, Copy, Check, UtensilsCrossed, ExternalLink, Maximize2, X, PencilLine, Wine as WineIcon
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { PageHeader } from '../components/layout/PageHeader';
@@ -10,11 +10,13 @@ import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { BottomSheet } from '../components/ui/BottomSheet';
-import { SlotPicker } from '../components/cellar/SlotPicker';
 import { Stepper } from '../components/ui/Stepper';
 import { WinePhoto } from '../components/ui/WinePhoto';
+import { SlotPicker } from '../components/cellar/SlotPicker';
 import { useWineStore, type Wine } from '../stores/wine';
+import { useLocationStore, type GridSlot } from '../stores/location';
 import { useToast } from '../components/ui/Toast';
+import { BOTTLE_FORMATS, getBottleFormat, isStandardBottle } from '../lib/bottle-formats';
 
 const PUBLIC_BASE = import.meta.env.VITE_PUBLIC_BASE_URL || '';
 
@@ -162,6 +164,89 @@ function Pairings({ wine }: { wine: Wine }) {
   );
 }
 
+function ShelfMinimap({ wine }: { wine: Wine }) {
+  const { locations, fetchLocations } = useLocationStore();
+  const fetchGrid = useLocationStore((s) => s.fetchGrid);
+  const [gridData, setGridData] = useState<{ rows: number; cols: number; slots: GridSlot[] } | null>(null);
+
+  useEffect(() => {
+    if (!wine.locationId) return;
+    fetchLocations();
+    fetchGrid(wine.locationId).then((data) => {
+      const config = data.location.gridConfig;
+      if (config) {
+        setGridData({ rows: config.rows, cols: config.cols, slots: data.slots });
+      }
+    }).catch(() => {});
+  }, [wine.locationId, fetchGrid, fetchLocations]);
+
+  if (!wine.locationId || !wine.slotIds?.length || !gridData) return null;
+
+  const location = locations.find((l) => l.id === wine.locationId);
+  const wineSlotIds = new Set(wine.slotIds);
+
+  return (
+    <Card>
+      <div className="flex items-center gap-2 mb-3">
+        <MapPin size={16} className="text-accent-bright" />
+        <h3 className="text-sm font-semibold">Emplacement</h3>
+        {location && <span className="text-xs text-text-muted ml-auto">{location.name}</span>}
+      </div>
+      <div
+        className="grid gap-[3px] mx-auto w-fit"
+        style={{
+          gridTemplateColumns: `repeat(${gridData.cols}, 10px)`,
+          gridTemplateRows: `repeat(${gridData.rows}, 10px)`,
+        }}
+      >
+        {Array.from({ length: gridData.rows }).map((_, row) =>
+          Array.from({ length: gridData.cols }).map((_, col) => {
+            const slot = gridData.slots.find((s) => s.slot.rowIndex === row && s.slot.colIndex === col);
+            const isBlocked = slot?.slot.isBlocked;
+            const isWineSlot = slot && wineSlotIds.has(slot.slot.id);
+            const isOccupied = slot?.slot.wineId && !isWineSlot;
+
+            return (
+              <div
+                key={`${row}-${col}`}
+                className={`w-[10px] h-[10px] rounded-full transition-colors ${
+                  isBlocked
+                    ? 'bg-transparent'
+                    : isWineSlot
+                    ? 'bg-accent-bright shadow-[0_0_4px_rgba(212,74,58,0.6)]'
+                    : isOccupied
+                    ? 'bg-text-muted/40'
+                    : 'bg-surface-hover border border-border-subtle'
+                }`}
+                title={slot?.slot.id || ''}
+              />
+            );
+          })
+        )}
+      </div>
+      <div className="flex items-center justify-center gap-4 mt-3 text-[10px] text-text-muted">
+        <div className="flex items-center gap-1">
+          <div className="w-2 h-2 rounded-full bg-accent-bright" />
+          <span>Cette bouteille</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <div className="w-2 h-2 rounded-full bg-text-muted/40" />
+          <span>Occupé</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <div className="w-2 h-2 rounded-full bg-surface-hover border border-border-subtle" />
+          <span>Libre</span>
+        </div>
+      </div>
+      {wine.slotIds && (
+        <p className="text-center text-xs text-text-secondary mt-2 font-mono">
+          {wine.slotIds.join(', ')}
+        </p>
+      )}
+    </Card>
+  );
+}
+
 function QRSection({ wine }: { wine: Wine }) {
   const [copied, setCopied] = useState(false);
   const base = PUBLIC_BASE || window.location.origin;
@@ -228,6 +313,7 @@ export function WineDetail() {
   const [showPhoto, setShowPhoto] = useState(false);
   const [showSlotPicker, setShowSlotPicker] = useState(false);
   const [showQuantity, setShowQuantity] = useState(false);
+  const [showFormat, setShowFormat] = useState(false);
   const [editQuantity, setEditQuantity] = useState(1);
   const [loading, setLoading] = useState(false);
   const [slotLoading, setSlotLoading] = useState(false);
@@ -279,12 +365,23 @@ export function WineDetail() {
     try {
       const updated = await updateWine(wine.id, { quantity: editQuantity });
       setWine(updated);
-      toast('success', `Quantité mise à jour : ${editQuantity}`);
+      toast('success', 'Quantité mise à jour');
       setShowQuantity(false);
     } catch {
       toast('error', 'Erreur lors de la mise à jour');
     }
     setLoading(false);
+  };
+
+  const handleSaveFormat = async (size: string) => {
+    try {
+      const updated = await updateWine(wine.id, { bottleSize: size } as Parameters<typeof updateWine>[1]);
+      setWine(updated);
+      toast('success', 'Format mis à jour');
+      setShowFormat(false);
+    } catch {
+      toast('error', 'Erreur lors de la mise à jour');
+    }
   };
 
   const handleDrink = async () => {
@@ -369,14 +466,31 @@ export function WineDetail() {
                 <span className="text-[11px] text-text-muted">Assigner un emplacement</span>
               </button>
             )}
+            {!isStandardBottle(wine.bottleSize) && (
+              <button
+                type="button"
+                onClick={() => setShowFormat(true)}
+                className="cursor-pointer"
+              >
+                <Badge variant="champagne">{getBottleFormat(wine.bottleSize).short}</Badge>
+              </button>
+            )}
+            {isStandardBottle(wine.bottleSize) && (
+              <button
+                type="button"
+                onClick={() => setShowFormat(true)}
+                className="flex items-center gap-1 border border-dashed border-border rounded-[var(--radius-sm)] px-2 py-0.5 hover:border-accent transition-colors cursor-pointer"
+              >
+                <WineIcon size={10} className="text-text-muted" />
+                <span className="text-[11px] text-text-muted">75cl</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={handleOpenQuantity}
-              className="flex items-center gap-1 bg-surface border border-border rounded-[var(--radius-sm)] px-2 py-0.5 hover:border-accent transition-colors"
+              className="font-mono text-sm text-text-secondary hover:text-accent-bright transition-colors cursor-pointer"
             >
-              <Package size={10} className="text-text-muted" />
-              <span className="font-mono text-sm text-text-secondary">×{wine.quantity || 0}</span>
-              <PencilLine size={10} className="text-text-muted ml-0.5" />
+              ×{wine.quantity || 0}
             </button>
           </div>
         </div>
@@ -448,6 +562,9 @@ export function WineDetail() {
           </Card>
         )}
 
+        {/* Shelf minimap */}
+        <ShelfMinimap wine={wine} />
+
         {/* QR Code */}
         {wine.importStatus !== 'consumed' && <QRSection wine={wine} />}
 
@@ -504,16 +621,34 @@ export function WineDetail() {
       {/* Quantity editor */}
       <BottomSheet open={showQuantity} onClose={() => setShowQuantity(false)} title="Modifier la quantité">
         <div className="space-y-4">
-          <p className="text-sm text-text-secondary">
-            Nombre de bouteilles de {wine.name} dans votre cave.
-          </p>
-          <Stepper value={editQuantity} onChange={setEditQuantity} min={1} label="Quantité" />
-          <div className="flex gap-3 pt-2">
+          <Stepper value={editQuantity} onChange={setEditQuantity} min={0} label="Bouteilles" />
+          <div className="flex gap-3">
             <Button variant="ghost" className="flex-1" onClick={() => setShowQuantity(false)}>Annuler</Button>
             <Button variant="primary" className="flex-1" loading={loading} onClick={handleSaveQuantity}>
               <Check size={14} /> Enregistrer
             </Button>
           </div>
+        </div>
+      </BottomSheet>
+
+      {/* Format editor */}
+      <BottomSheet open={showFormat} onClose={() => setShowFormat(false)} title="Format de bouteille">
+        <div className="grid grid-cols-2 gap-2">
+          {BOTTLE_FORMATS.map((f) => (
+            <button
+              key={f.value}
+              type="button"
+              onClick={() => handleSaveFormat(f.value)}
+              className={`p-3 rounded-[var(--radius-md)] border text-center transition-colors cursor-pointer ${
+                wine.bottleSize === f.value || (!wine.bottleSize && f.value === '75')
+                  ? 'border-accent bg-accent/10 text-accent-bright'
+                  : 'border-border bg-surface-hover text-text-secondary hover:border-accent/50'
+              }`}
+            >
+              <span className="text-sm font-medium block">{f.label}</span>
+              <span className="text-xs text-text-muted">{f.liters}</span>
+            </button>
+          ))}
         </div>
       </BottomSheet>
 

@@ -68,6 +68,7 @@ interface WineState {
 
   fetchWines: () => Promise<void>;
   fetchPending: () => Promise<void>;
+  createWine: (data: Partial<Wine>) => Promise<Wine>;
   validateWine: (id: string, data: { quantity: number; slotIds?: string[]; locationId?: string; purchasePrice?: number }) => Promise<void>;
   updateWine: (id: string, data: { slotIds?: string[]; locationId?: string; quantity?: number }) => Promise<Wine>;
   drinkWine: (id: string) => Promise<void>;
@@ -117,6 +118,20 @@ export const useWineStore = create<WineState>((set) => ({
       const pending = Array.isArray(data) ? data : [];
       set({ pending, pendingCount: pending.length });
     } catch {}
+  },
+
+  createWine: async (data) => {
+    const res = await apiFetch(`${API}/wines`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || 'Création échouée');
+    }
+    const created: Wine = await res.json();
+    set((s) => ({ wines: [created, ...s.wines] }));
+    return created;
   },
 
   validateWine: async (id, data) => {

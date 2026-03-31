@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import fastifyWebsocket from '@fastify/websocket';
 import fastifyStatic from '@fastify/static';
+import multipart from '@fastify/multipart';
 import path from 'path';
 import authPlugin from './plugins/auth.js';
 import { authRoutes } from './routes/auth.js';
@@ -24,6 +25,7 @@ async function main() {
   // Plugins
   await app.register(cors, { origin: true });
   await app.register(fastifyWebsocket);
+  await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } });
   await app.register(authPlugin);
 
   // Servir les photos
