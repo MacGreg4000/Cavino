@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { UtensilsCrossed, Send, Wine, Wifi, WifiOff } from 'lucide-react';
+import { UtensilsCrossed, Send, Wine } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/EmptyState';
+import { WinePhoto } from '../components/ui/WinePhoto';
 import { useWineStore, type Wine as WineType } from '../stores/wine';
 import { recommendWines } from '../services/recommendation';
 
@@ -23,22 +24,6 @@ export function Advisor() {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [results, setResults] = useState<Recommendation[] | null>(null);
   const [loading, setLoading] = useState(false);
-  const [ollamaOnline, setOllamaOnline] = useState<boolean | null>(null);
-  const [mode, setMode] = useState<'ollama' | 'offline'>('ollama');
-
-  // Vérifier Ollama au montage
-  useEffect(() => {
-    fetch('/api/advisor/status')
-      .then((r) => r.json())
-      .then((data) => {
-        setOllamaOnline(data.online);
-        if (!data.online) setMode('offline');
-      })
-      .catch(() => {
-        setOllamaOnline(false);
-        setMode('offline');
-      });
-  }, []);
 
   const toggleTag = (tag: string) => {
     setSelectedTags((prev) =>
@@ -46,52 +31,14 @@ export function Advisor() {
     );
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     if (!meal && selectedTags.length === 0) return;
     setLoading(true);
     setResults(null);
-
-    if (mode === 'ollama' && ollamaOnline) {
-      try {
-        const { apiFetch } = await import('../lib/api');
-        const res = await apiFetch('/api/advisor/ask', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            meal,
-            tags: selectedTags,
-            wines: wines.map((w) => ({
-              id: w.id,
-              name: w.name,
-              type: w.type,
-              region: w.region,
-              appellation: w.appellation,
-            })),
-          }),
-        });
-        const data = await res.json();
-        if (data.recommendations?.length > 0) {
-          const mapped = data.recommendations
-            .map((r: { id: string; score: number; reason: string }) => {
-              const wine = wines.find((w) => w.id === r.id);
-              if (!wine) return null;
-              return { wine, score: r.score, reason: r.reason };
-            })
-            .filter(Boolean) as Recommendation[];
-          setResults(mapped.length > 0 ? mapped : recommendWines(wines, meal, selectedTags));
-        } else {
-          // Fallback offline
-          setResults(recommendWines(wines, meal, selectedTags));
-        }
-      } catch {
-        // Fallback offline en cas d'erreur
-        setResults(recommendWines(wines, meal, selectedTags));
-      }
-    } else {
+    setTimeout(() => {
       setResults(recommendWines(wines, meal, selectedTags));
-    }
-
-    setLoading(false);
+      setLoading(false);
+    }, 0);
   };
 
   return (
@@ -99,34 +46,6 @@ export function Advisor() {
       <PageHeader title="Conseiller" subtitle="Quel repas préparez-vous ?" />
 
       <div className="px-4 pt-4 max-w-lg mx-auto space-y-4 pb-8">
-        {/* Mode toggle */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => ollamaOnline && setMode('ollama')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-[var(--radius-full)] border transition-colors cursor-pointer ${
-              mode === 'ollama'
-                ? 'bg-accent/20 border-accent/40 text-accent-bright'
-                : 'bg-surface border-border-subtle text-text-muted'
-            } ${!ollamaOnline ? 'opacity-50 cursor-not-allowed' : ''}`}
-          >
-            {ollamaOnline ? <Wifi size={12} /> : <WifiOff size={12} />}
-            IA Sommelier
-          </button>
-          <button
-            onClick={() => setMode('offline')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-[var(--radius-full)] border transition-colors cursor-pointer ${
-              mode === 'offline'
-                ? 'bg-accent/20 border-accent/40 text-accent-bright'
-                : 'bg-surface border-border-subtle text-text-secondary hover:border-border'
-            }`}
-          >
-            Accords cave
-          </button>
-          {ollamaOnline === false && (
-            <span className="text-[10px] text-text-muted ml-auto">Ollama hors ligne</span>
-          )}
-        </div>
-
         {/* Meal input */}
         <Card>
           <textarea
@@ -173,7 +92,7 @@ export function Advisor() {
               <div>
                 <h3 className="text-sm font-semibold text-text mb-2 flex items-center gap-2">
                   <Wine size={14} className="text-accent" />
-                  {mode === 'ollama' ? 'Recommandations IA' : 'Dans votre cave'}
+                  Dans votre cave
                 </h3>
                 <div className="flex flex-col gap-2">
                   {results.map(({ wine, score, reason }) => (
@@ -181,9 +100,9 @@ export function Advisor() {
                       <Card hover className="!p-3">
                         <div className="flex items-center gap-3">
                           {wine.photoUrl ? (
-                            <img src={wine.photoUrl} alt="" className="w-11 h-11 rounded-[var(--radius-sm)] object-cover" />
+                            <WinePhoto src={wine.photoUrl} alt="" className="w-11 h-11 rounded-[var(--radius-sm)] flex-shrink-0" />
                           ) : (
-                            <div className="w-11 h-11 rounded-[var(--radius-sm)] bg-surface-hover flex items-center justify-center">
+                            <div className="w-11 h-11 rounded-[var(--radius-sm)] bg-surface-hover flex items-center justify-center flex-shrink-0">
                               <Wine size={16} className="text-text-muted" />
                             </div>
                           )}

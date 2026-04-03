@@ -12,7 +12,7 @@ export async function statsRoutes(app: FastifyInstance) {
     const [totals] = await db.select({
       totalBottles: sum(wines.quantity),
       totalWines: count(),
-      totalValue: sum(wines.estimatedValue),
+      totalValue: sql<string>`coalesce(sum(coalesce(${wines.estimatedValue}, 0)::numeric * coalesce(${wines.quantity}, 1)), 0)`,
     })
       .from(wines)
       .where(eq(wines.importStatus, 'available'));
