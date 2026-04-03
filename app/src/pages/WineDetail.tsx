@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Thermometer, Clock, GlassWater, Grape, MapPin, Award, Trash2,
-  QrCode, Copy, Check, UtensilsCrossed, ExternalLink, Maximize2, X, PencilLine, Wine as WineIcon
+  QrCode, Copy, Check, UtensilsCrossed, ExternalLink, Maximize2, X, PencilLine, Wine as WineIcon,
+  StickyNote,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { PageHeader } from '../components/layout/PageHeader';
@@ -319,6 +320,8 @@ export function WineDetail() {
   const [slotLoading, setSlotLoading] = useState(false);
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
   const [selectedLocationId, setSelectedLocationId] = useState<string>('');
+  const [personalCommentDraft, setPersonalCommentDraft] = useState('');
+  const [commentSaving, setCommentSaving] = useState(false);
 
   useEffect(() => {
     const found = [...wines, ...pending].find((w) => w.id === id);
@@ -330,6 +333,10 @@ export function WineDetail() {
       );
     }
   }, [id, wines, pending, navigate]);
+
+  useEffect(() => {
+    if (wine) setPersonalCommentDraft(wine.personalComment ?? '');
+  }, [wine?.id]);
 
   if (!wine) return null;
 
@@ -382,6 +389,22 @@ export function WineDetail() {
     } catch {
       toast('error', 'Erreur lors de la mise à jour');
     }
+  };
+
+  const handleSavePersonalComment = async () => {
+    setCommentSaving(true);
+    try {
+      const trimmed = personalCommentDraft.trim();
+      const updated = await updateWine(wine.id, {
+        personalComment: trimmed.length > 0 ? trimmed : null,
+      });
+      setWine(updated);
+      setPersonalCommentDraft(updated.personalComment ?? '');
+      toast('success', 'Notes enregistrées');
+    } catch {
+      toast('error', 'Erreur lors de l’enregistrement');
+    }
+    setCommentSaving(false);
   };
 
   const handleDrink = async () => {
@@ -502,6 +525,37 @@ export function WineDetail() {
             {wine.style && <p className="text-xs text-gold mt-2 italic">{wine.style}</p>}
           </Card>
         )}
+
+        <Card>
+          <div className="flex items-center gap-2 mb-1">
+            <StickyNote size={16} className="text-accent" />
+            <h3 className="text-sm font-semibold text-text">Mes notes</h3>
+          </div>
+          <p className="text-[10px] text-text-muted mb-3 leading-relaxed">
+            Commentaire libre : cadeau, occasion, souvenir… Réservé à votre cave, non affiché sur la fiche publique.
+          </p>
+          <textarea
+            value={personalCommentDraft}
+            onChange={(e) => setPersonalCommentDraft(e.target.value)}
+            placeholder="Ex. : Offerte par Paul — super bouteille à offrir à son tour…"
+            rows={4}
+            maxLength={10000}
+            className="w-full rounded-[var(--radius-md)] border border-border bg-surface-hover/40 px-3 py-2.5 text-sm text-text placeholder:text-text-muted outline-none focus:border-accent/40 resize-y min-h-[96px]"
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            className="w-full mt-3"
+            loading={commentSaving}
+            disabled={
+              commentSaving ||
+              personalCommentDraft.trim() === (wine.personalComment ?? '').trim()
+            }
+            onClick={handleSavePersonalComment}
+          >
+            Enregistrer les notes
+          </Button>
+        </Card>
 
         {/* Palate */}
         {wine.palate && (

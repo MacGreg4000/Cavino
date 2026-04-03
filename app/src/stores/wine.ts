@@ -50,6 +50,8 @@ export interface Wine {
   awards?: Array<{ year: number; name: string; medal?: string }>;
   personalRating?: number;
   tastingNotes?: string;
+  /** Commentaire personnel (cadeau, notes…) — privé, pas sur la page publique */
+  personalComment?: string | null;
   isFavorite?: boolean;
   importStatus?: 'pending' | 'available' | 'consumed';
   sourceFile?: string;
@@ -70,7 +72,7 @@ interface WineState {
   fetchPending: () => Promise<void>;
   createWine: (data: Partial<Wine>) => Promise<Wine>;
   validateWine: (id: string, data: { quantity: number; slotIds?: string[]; locationId?: string; purchasePrice?: number }) => Promise<void>;
-  updateWine: (id: string, data: { slotIds?: string[]; locationId?: string; quantity?: number }) => Promise<Wine>;
+  updateWine: (id: string, data: Partial<Pick<Wine, 'slotIds' | 'locationId' | 'quantity' | 'bottleSize' | 'personalComment' | 'tastingNotes' | 'personalRating' | 'isFavorite' | 'name'>>) => Promise<Wine>;
   drinkWine: (id: string) => Promise<void>;
   deleteWine: (id: string) => Promise<void>;
   addPendingFromWs: (wine: Wine) => void;
@@ -161,6 +163,7 @@ export const useWineStore = create<WineState>((set) => ({
     const updated: Wine = await res.json();
     set((s) => ({
       wines: s.wines.map((w) => (w.id === id ? updated : w)),
+      pending: s.pending.map((w) => (w.id === id ? updated : w)),
     }));
     return updated;
   },

@@ -33,6 +33,7 @@ export function AddWine() {
   const [locationId, setLocationId] = useState('');
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [personalComment, setPersonalComment] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -64,6 +65,7 @@ export function AddWine() {
         quantity,
         bottleSize,
         purchasePrice: purchasePrice || undefined,
+        personalComment: personalComment.trim() || undefined,
         slotIds: selectedSlots.length > 0 ? selectedSlots : undefined,
         locationId: locationId || undefined,
       });
@@ -229,6 +231,19 @@ export function AddWine() {
               value={purchasePrice}
               onChange={(e) => setPurchasePrice(e.target.value)}
             />
+            <div>
+              <label className="text-sm text-text-secondary font-medium mb-1.5 block">
+                Mes notes (optionnel)
+              </label>
+              <textarea
+                value={personalComment}
+                onChange={(e) => setPersonalComment(e.target.value)}
+                placeholder="Cadeau, occasion, commentaire personnel…"
+                rows={3}
+                maxLength={10000}
+                className="w-full rounded-[var(--radius-md)] border border-border bg-surface-hover/40 px-3 py-2 text-sm text-text placeholder:text-text-muted outline-none focus:border-accent/40 resize-y min-h-[72px]"
+              />
+            </div>
           </div>
         </Card>
 
