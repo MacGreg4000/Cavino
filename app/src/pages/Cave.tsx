@@ -8,6 +8,7 @@ import { Badge } from '../components/ui/Badge';
 import { SearchBar } from '../components/ui/Input';
 import { EmptyState } from '../components/ui/EmptyState';
 import { useWineStore, type Wine as WineType } from '../stores/wine';
+import { normalizeForSearch, matchesNormalizedSearch } from '../lib/search-normalize';
 
 const wineTypeVariant = (type?: string) => {
   switch (type?.toLowerCase()) {
@@ -93,8 +94,8 @@ function WineGridCard({ wine }: { wine: WineType }) {
     <Link to={`/cave/${wine.id}`}>
       <div className={`bg-surface rounded-[var(--radius-md)] border border-border border-t-4 ${typeLeftBorder(wine.type).replace('border-l-', 'border-t-')} overflow-hidden hover:bg-surface-hover transition-colors active:scale-[0.99]`}>
         {wine.photoUrl ? (
-          <div className="aspect-[3/4] overflow-hidden">
-            <img src={wine.photoUrl} alt="" className="w-full h-full object-cover" />
+          <div className="aspect-[3/4] w-full overflow-hidden">
+            <WinePhoto src={wine.photoUrl} alt="" className="h-full w-full" />
           </div>
         ) : (
           <div className="aspect-[3/4] bg-surface-hover flex items-center justify-center">
@@ -125,13 +126,14 @@ export function Cave() {
   }, [fetchWines, fetchPending]);
 
   const filtered = wines.filter((w) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
+    const raw = search.trim();
+    if (!raw) return true;
+    const q = normalizeForSearch(raw);
     return (
-      w.name.toLowerCase().includes(q) ||
-      w.domain?.toLowerCase().includes(q) ||
-      w.appellation?.toLowerCase().includes(q) ||
-      w.region?.toLowerCase().includes(q)
+      matchesNormalizedSearch(w.name, q) ||
+      matchesNormalizedSearch(w.domain, q) ||
+      matchesNormalizedSearch(w.appellation, q) ||
+      matchesNormalizedSearch(w.region, q)
     );
   });
 

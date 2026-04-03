@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Wine, Search, Clock } from 'lucide-react';
 import { Badge } from '../../components/ui/Badge';
 import type { Wine as WineType } from '../../stores/wine';
+import { normalizeForSearch, matchesNormalizedSearch } from '../../lib/search-normalize';
 
 function getGardeStatus(wine: WineType): { label: string; variant: 'gold' | 'default' | 'danger' | 'warning' } {
   const year = new Date().getFullYear();
@@ -48,18 +49,19 @@ export function PublicWineList() {
   }, []);
 
   useEffect(() => {
-    if (!search) {
+    const raw = search.trim();
+    if (!raw) {
       setFiltered(wines);
       return;
     }
-    const q = search.toLowerCase();
+    const q = normalizeForSearch(raw);
     setFiltered(
       wines.filter(
         (w) =>
-          w.name.toLowerCase().includes(q) ||
-          w.domain?.toLowerCase().includes(q) ||
-          w.appellation?.toLowerCase().includes(q) ||
-          w.region?.toLowerCase().includes(q)
+          matchesNormalizedSearch(w.name, q) ||
+          matchesNormalizedSearch(w.domain, q) ||
+          matchesNormalizedSearch(w.appellation, q) ||
+          matchesNormalizedSearch(w.region, q)
       )
     );
   }, [search, wines]);
