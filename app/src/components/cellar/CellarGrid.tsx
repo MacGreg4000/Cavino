@@ -1,17 +1,42 @@
 import React from 'react';
 import { Wine } from 'lucide-react';
-import { GridCell } from './GridCell';
+import { GridCell, type CellHighlight } from './GridCell';
 import type { GridSlot, Location } from '../../stores/location';
 
 interface CellarGridProps {
   location: Location;
   slots: GridSlot[];
   onSlotClick?: (slot: GridSlot) => void;
+  /** @deprecated utiliser highlightPrimaryIds / highlightSecondaryIds */
   highlightSlots?: string[];
+  /** Cases en sélection forte (rouge) */
+  highlightPrimaryIds?: string[];
+  /** Mise en évidence légère (or) — ex. emplacements actuels avant déplacement */
+  highlightSecondaryIds?: string[];
   compact?: boolean;
 }
 
-export function CellarGrid({ location, slots, onSlotClick, highlightSlots = [], compact = false }: CellarGridProps) {
+function highlightForSlot(
+  slotId: string,
+  primary: string[],
+  secondary: string[],
+  legacy: string[]
+): CellHighlight {
+  if (primary.includes(slotId)) return 'selected-red';
+  if (secondary.includes(slotId)) return 'candidate';
+  if (legacy.includes(slotId)) return 'candidate';
+  return 'none';
+}
+
+export function CellarGrid({
+  location,
+  slots,
+  onSlotClick,
+  highlightSlots = [],
+  highlightPrimaryIds = [],
+  highlightSecondaryIds = [],
+  compact = false,
+}: CellarGridProps) {
   const config = location.gridConfig;
   if (!config) return null;
 
@@ -65,7 +90,12 @@ export function CellarGrid({ location, slots, onSlotClick, highlightSlots = [], 
                   slot={slot}
                   label={label}
                   onClick={onSlotClick}
-                  highlight={highlightSlots.includes(slot.slot.id)}
+                  highlightKind={highlightForSlot(
+                    slot.slot.id,
+                    highlightPrimaryIds,
+                    highlightSecondaryIds,
+                    highlightSlots
+                  )}
                 />
               );
             })}
@@ -74,7 +104,19 @@ export function CellarGrid({ location, slots, onSlotClick, highlightSlots = [], 
       </div>
 
       {/* Legend */}
-      <div className="flex items-center gap-4 pt-2 pl-8 text-[10px] text-text-muted">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-2 pl-8 text-[10px] text-text-muted">
+        {highlightPrimaryIds.length > 0 && (
+          <span className="flex items-center gap-1 text-wine-red font-medium">
+            <span className="inline-block w-2.5 h-2.5 rounded-sm ring-2 ring-wine-red bg-wine-red/30" />
+            Sélection
+          </span>
+        )}
+        {highlightSecondaryIds.length > 0 && (
+          <span className="flex items-center gap-1 text-gold/90">
+            <span className="inline-block w-2.5 h-2.5 rounded-sm ring-2 ring-gold/60 bg-gold/15" />
+            Départ
+          </span>
+        )}
         <span className="flex items-center gap-1">
           <Wine size={10} className="text-wine-red" /> Rouge
         </span>

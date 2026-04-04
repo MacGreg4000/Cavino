@@ -2,11 +2,16 @@ import { Wine } from 'lucide-react';
 import type { GridSlot } from '../../stores/location';
 import { WinePhoto } from '../ui/WinePhoto';
 
+export type CellHighlight = 'none' | 'candidate' | 'selected-red';
+
 interface GridCellProps {
   slot: GridSlot;
   label: string;
   onClick?: (slot: GridSlot) => void;
+  /** @deprecated utiliser highlightKind */
   highlight?: boolean;
+  /** candidate = cases actuelles (or); selected-red = sélection explicite (rouge cave) */
+  highlightKind?: CellHighlight;
 }
 
 const wineTypeColor: Record<string, string> = {
@@ -27,7 +32,14 @@ const wineTypeBg: Record<string, string> = {
   effervescent: 'bg-champagne/10',
 };
 
-export function GridCell({ slot, label, onClick, highlight }: GridCellProps) {
+const highlightClasses: Record<Exclude<CellHighlight, 'none'>, string> = {
+  candidate:
+    'ring-2 ring-gold/50 ring-offset-1 ring-offset-bg border-gold/40 bg-gold/15 z-[3]',
+  'selected-red':
+    'ring-2 ring-wine-red border-wine-red/90 bg-wine-red/30 shadow-[0_0_12px_rgba(139,26,26,0.45)] z-[3]',
+};
+
+export function GridCell({ slot, label, onClick, highlight, highlightKind = 'none' }: GridCellProps) {
   const isBlocked = slot.slot.isBlocked;
   const isOccupied = !!slot.wine;
   const isEmpty = !isBlocked && !isOccupied;
@@ -35,6 +47,13 @@ export function GridCell({ slot, label, onClick, highlight }: GridCellProps) {
   const wineType = slot.wine?.type?.toLowerCase() || '';
   const colorClass = wineTypeColor[wineType] || 'text-text-muted';
   const bgClass = wineTypeBg[wineType] || 'bg-surface-hover';
+
+  const effectiveKind: CellHighlight =
+    highlightKind !== 'none'
+      ? highlightKind
+      : highlight
+        ? 'candidate'
+        : 'none';
 
   return (
     <button
@@ -50,7 +69,7 @@ export function GridCell({ slot, label, onClick, highlight }: GridCellProps) {
             ? `${bgClass} border-border hover:brightness-110 active:scale-95`
             : 'bg-surface-hover/50 border-border-subtle hover:border-border hover:bg-surface-hover active:scale-95'
         }
-        ${highlight ? 'animate-pulse-gold ring-1 ring-gold/50' : ''}
+        ${effectiveKind !== 'none' ? highlightClasses[effectiveKind] : ''}
       `}
     >
       {isOccupied && slot.wine?.photoUrl ? (

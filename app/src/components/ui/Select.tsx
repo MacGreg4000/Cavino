@@ -13,7 +13,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
       <div className="relative">
         <select
           ref={ref}
-          className={`w-full appearance-none bg-surface-hover border border-border rounded-[var(--radius-md)] px-3 py-2.5 pr-9 text-sm text-text outline-none transition-colors focus:border-accent cursor-pointer ${className}`}
+          className={`w-full appearance-none bg-surface-hover border border-border rounded-[var(--radius-md)] px-3 py-2.5 pr-9 text-sm text-text outline-none transition-colors focus:border-accent cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
           {...props}
         >
           {options.map((opt) => (

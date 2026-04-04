@@ -323,6 +323,7 @@ export function WineDetail() {
   const [selectedLocationId, setSelectedLocationId] = useState<string>('');
   const [personalCommentDraft, setPersonalCommentDraft] = useState('');
   const [commentSaving, setCommentSaving] = useState(false);
+  const [slotPickerFlowPhase, setSlotPickerFlowPhase] = useState<'source' | 'dest' | null>(null);
 
   useEffect(() => {
     const found = [...wines, ...pending].find((w) => w.id === id);
@@ -344,7 +345,7 @@ export function WineDetail() {
     if (!wine) return;
     const open = (location.state as { openSlotPicker?: boolean } | undefined)?.openSlotPicker;
     if (!open) return;
-    setSelectedSlots(wine.slotIds ?? []);
+    setSelectedSlots([]);
     setSelectedLocationId(wine.locationId ?? '');
     setShowSlotPicker(true);
     navigate(
@@ -356,7 +357,7 @@ export function WineDetail() {
   if (!wine) return null;
 
   const handleOpenSlotPicker = () => {
-    setSelectedSlots(wine.slotIds ?? []);
+    setSelectedSlots([]);
     setSelectedLocationId(wine.locationId ?? '');
     setShowSlotPicker(true);
   };
@@ -694,24 +695,56 @@ export function WineDetail() {
       </BottomSheet>
 
       {/* Slot picker */}
-      <BottomSheet open={showSlotPicker} onClose={() => setShowSlotPicker(false)} title="Déplacer la bouteille">
+      <BottomSheet
+        open={showSlotPicker}
+        onClose={() => {
+          setShowSlotPicker(false);
+          setSlotPickerFlowPhase(null);
+        }}
+        title="Déplacer la bouteille"
+      >
         <div className="space-y-4">
-          <p className="text-xs text-text-secondary leading-relaxed -mt-1">
-            Choisissez l’emplacement (cave ou frigo), puis touchez les cases vides — jusqu’à autant que votre quantité
-            ({wine.quantity || 1}). Les cases déjà prises par d’autres bouteilles ne sont pas sélectionnables.
-          </p>
           <SlotPicker
             selectedSlots={selectedSlots}
             selectedLocationId={selectedLocationId}
             onSelect={(slots, locId) => { setSelectedSlots(slots); setSelectedLocationId(locId); }}
             maxSlots={wine.quantity || 1}
             wineIdBeingMoved={wine.importStatus === 'available' ? wine.id : undefined}
+            sourceSlotIds={wine.slotIds ?? []}
+            onFlowPhaseChange={setSlotPickerFlowPhase}
           />
-          <div className="flex gap-3 pt-2">
-            <Button variant="ghost" className="flex-1" onClick={() => setShowSlotPicker(false)}>Annuler</Button>
-            <Button variant="primary" className="flex-1" loading={slotLoading} onClick={handleSaveSlots}>
-              <Check size={14} /> Enregistrer
-            </Button>
+          <div className="flex flex-col gap-2 pt-2">
+            {(slotPickerFlowPhase === 'source' ||
+              (slotPickerFlowPhase === null && (wine.slotIds?.length ?? 0) > 0)) && (
+              <p className="text-[10px] text-text-muted text-center">
+                Terminez l’étape « Départ » pour activer l’enregistrement.
+              </p>
+            )}
+            <div className="flex gap-3">
+              <Button
+                variant="ghost"
+                className="flex-1"
+                onClick={() => {
+                  setShowSlotPicker(false);
+                  setSlotPickerFlowPhase(null);
+                }}
+              >
+                Annuler
+              </Button>
+              <Button
+                variant="primary"
+                className="flex-1"
+                loading={slotLoading}
+                disabled={
+                  slotLoading ||
+                  slotPickerFlowPhase === 'source' ||
+                  (slotPickerFlowPhase === null && (wine.slotIds?.length ?? 0) > 0)
+                }
+                onClick={handleSaveSlots}
+              >
+                <Check size={14} /> Enregistrer
+              </Button>
+            </div>
           </div>
         </div>
       </BottomSheet>

@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Camera, Plus } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { Camera, Plus, RefreshCw, FolderOpen } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
@@ -18,6 +18,7 @@ export function AddWine() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const createWine = useWineStore((s) => s.createWine);
+  const fetchPending = useWineStore((s) => s.fetchPending);
 
   const [name, setName] = useState('');
   const [domain, setDomain] = useState('');
@@ -35,6 +36,30 @@ export function AddWine() {
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [personalComment, setPersonalComment] = useState('');
   const [loading, setLoading] = useState(false);
+  const [scanning, setScanning] = useState(false);
+
+  useEffect(() => {
+    fetchPending();
+  }, [fetchPending]);
+
+  const handleScanInbox = async () => {
+    setScanning(true);
+    try {
+      const res = await apiFetch('/api/import/scan', { method: 'POST', body: '{}' });
+      const data = await res.json();
+      await fetchPending();
+      if (data.imported > 0) {
+        toast('success', `${data.imported} bouteille(s) importée(s) — à valider`);
+      } else if (data.errors?.length > 0) {
+        toast('error', data.errors[0]);
+      } else {
+        toast('info', data.message || 'Aucun nouveau fichier dans l’inbox');
+      }
+    } catch {
+      toast('error', 'Impossible de scanner l’inbox');
+    }
+    setScanning(false);
+  };
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -100,9 +125,61 @@ export function AddWine() {
 
   return (
     <div>
-      <PageHeader title="Ajouter un vin" back />
+      <PageHeader
+        title="Ajouter un vin"
+        back
+        action={
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="!p-2 shrink-0 -mr-1"
+            loading={scanning}
+            onClick={handleScanInbox}
+            title="Scanner le dossier inbox (JSON + photo sur le serveur)"
+            aria-label="Scanner l’inbox maintenant"
+          >
+            {!scanning && <RefreshCw size={20} className="text-gold" />}
+          </Button>
+        }
+      />
 
       <div className="px-4 pt-4 max-w-lg mx-auto space-y-4 pb-8">
+        <Card className="!bg-accent/5 !border-accent/25">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-[var(--radius-md)] bg-accent/15 flex items-center justify-center flex-shrink-0">
+              <FolderOpen size={20} className="text-accent-bright" />
+            </div>
+            <div className="flex-1 min-w-0 space-y-2">
+              <p className="text-sm font-semibold text-text">Import depuis le dossier inbox</p>
+              <p className="text-[11px] text-text-muted leading-relaxed">
+                Sur le serveur (ex. NAS), placez un fichier <span className="font-mono text-text-secondary">.json</span> et une photo
+                (même nom, ex. <span className="font-mono text-text-secondary">.jpg</span> ou <span className="font-mono text-text-secondary">.HEIC</span>) dans{' '}
+                <span className="font-mono text-text-secondary">data/inbox</span>. Les bouteilles apparaissent ensuite dans{' '}
+                <strong className="text-text">À valider</strong>.
+              </p>
+              <div className="flex flex-col gap-2 pt-1">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="w-full"
+                  loading={scanning}
+                  onClick={handleScanInbox}
+                >
+                  <RefreshCw size={14} /> Scanner l’inbox maintenant
+                </Button>
+                <Link
+                  to="/pending"
+                  className="inline-flex items-center justify-center text-xs font-medium text-gold hover:text-accent-bright transition-colors py-2 px-2"
+                >
+                  Ouvrir « À valider » →
+                </Link>
+              </div>
+            </div>
+          </div>
+        </Card>
+
         {/* Photo */}
         <Card>
           <label className="cursor-pointer block">
