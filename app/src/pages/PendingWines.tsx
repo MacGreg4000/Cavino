@@ -76,6 +76,7 @@ function ValidationForm({ wine, onClose }: { wine: WineType; onClose: () => void
         <label className="text-sm text-text-secondary font-medium mb-1.5 block">Emplacement (optionnel)</label>
         <SlotPicker
           selectedSlots={selectedSlots}
+          selectedLocationId={locationId}
           onSelect={(slots, locId) => { setSelectedSlots(slots); setLocationId(locId); }}
           maxSlots={quantity}
         />

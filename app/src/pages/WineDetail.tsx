@@ -660,8 +660,10 @@ export function WineDetail() {
         <div className="space-y-4">
           <SlotPicker
             selectedSlots={selectedSlots}
+            selectedLocationId={selectedLocationId}
             onSelect={(slots, locId) => { setSelectedSlots(slots); setSelectedLocationId(locId); }}
             maxSlots={wine.quantity || 1}
+            wineIdBeingMoved={wine.importStatus === 'available' ? wine.id : undefined}
           />
           <div className="flex gap-3 pt-2">
             <Button variant="ghost" className="flex-1" onClick={() => setShowSlotPicker(false)}>Annuler</Button>

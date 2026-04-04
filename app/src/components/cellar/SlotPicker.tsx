@@ -1,37 +1,69 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CellarGrid } from './CellarGrid';
 import { useLocationStore, type Location, type GridSlot } from '../../stores/location';
 import { Select } from '../ui/Select';
 
 interface SlotPickerProps {
   selectedSlots: string[];
+  /** Cave / emplacement dont la grille est affichée (contrôlé par le parent) */
+  selectedLocationId: string;
   onSelect: (slotIds: string[], locationId: string) => void;
   maxSlots?: number;
+  /** Si défini, les cases occupées par ce vin restent cliquables (déplacement / désélection) */
+  wineIdBeingMoved?: string;
 }
 
-export function SlotPicker({ selectedSlots, onSelect, maxSlots }: SlotPickerProps) {
+export function SlotPicker({
+  selectedSlots,
+  selectedLocationId,
+  onSelect,
+  maxSlots,
+  wineIdBeingMoved,
+}: SlotPickerProps) {
   const { locations, fetchLocations, fetchGrid } = useLocationStore();
-  const [selectedLocation, setSelectedLocation] = useState<string>('');
   const [gridData, setGridData] = useState<{ location: Location; slots: GridSlot[] } | null>(null);
 
   useEffect(() => {
     fetchLocations();
   }, [fetchLocations]);
 
-  useEffect(() => {
-    if (locations.length > 0 && !selectedLocation) {
-      setSelectedLocation(locations[0].id);
+  const effectiveLocationId = useMemo(() => {
+    if (!locations.length) return '';
+    if (selectedLocationId && locations.some((l) => l.id === selectedLocationId)) {
+      return selectedLocationId;
     }
-  }, [locations, selectedLocation]);
+    return locations[0].id;
+  }, [locations, selectedLocationId]);
+
+  /**
+   * Corrige un locationId obsolète ou vide une fois les emplacements chargés.
+   * On conserve selectedSlots si déjà choisis (ex. vin avec cases mais sans locationId en base).
+   */
+  useEffect(() => {
+    if (!locations.length) return;
+    const valid =
+      selectedLocationId && locations.some((l) => l.id === selectedLocationId);
+    if (!valid) {
+      onSelect(selectedSlots, effectiveLocationId);
+    }
+    // onSelect : fonction inline côté parent, ne pas mettre dans les deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locations, selectedLocationId, effectiveLocationId]);
 
   useEffect(() => {
-    if (selectedLocation) {
-      fetchGrid(selectedLocation).then(setGridData);
+    if (!effectiveLocationId) {
+      setGridData(null);
+      return;
     }
-  }, [selectedLocation, fetchGrid]);
+    fetchGrid(effectiveLocationId).then(setGridData);
+  }, [effectiveLocationId, fetchGrid]);
 
   const handleSlotClick = (slot: GridSlot) => {
-    if (slot.slot.isBlocked || slot.wine) return; // Can't pick occupied or blocked
+    if (slot.slot.isBlocked) return;
+
+    const occupiedByOther =
+      slot.wine && (!wineIdBeingMoved || slot.wine.id !== wineIdBeingMoved);
+    if (occupiedByOther) return;
 
     const slotId = slot.slot.id;
     const isDeselecting = selectedSlots.includes(slotId);
@@ -42,7 +74,11 @@ export function SlotPicker({ selectedSlots, onSelect, maxSlots }: SlotPickerProp
       ? selectedSlots.filter((s) => s !== slotId)
       : [...selectedSlots, slotId];
 
-    onSelect(newSelection, selectedLocation);
+    onSelect(newSelection, effectiveLocationId);
+  };
+
+  const handleLocationChange = (newLoc: string) => {
+    onSelect([], newLoc);
   };
 
   if (locations.length === 0) {
@@ -57,8 +93,8 @@ export function SlotPicker({ selectedSlots, onSelect, maxSlots }: SlotPickerProp
     <div className="space-y-3">
       <Select
         label="Emplacement"
-        value={selectedLocation}
-        onChange={(e) => setSelectedLocation(e.target.value)}
+        value={effectiveLocationId}
+        onChange={(e) => handleLocationChange(e.target.value)}
         options={locations.map((l) => ({ value: l.id, label: `${l.name} (${l.type})` }))}
       />
 

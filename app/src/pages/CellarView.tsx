@@ -127,6 +127,9 @@ function LocationGrid({ locationId }: { locationId: string }) {
             >
               Voir la fiche
             </Button>
+            <p className="text-[11px] text-text-muted text-center leading-relaxed">
+              Pour déplacer la bouteille vers un autre casier ou une autre cave, ouvrez la fiche puis « Assigner un emplacement » ou le code de case.
+            </p>
           </div>
         )}
       </BottomSheet>
