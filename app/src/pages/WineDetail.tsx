@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   Thermometer, Clock, GlassWater, Grape, MapPin, Award, Trash2,
   QrCode, Copy, Check, UtensilsCrossed, ExternalLink, Maximize2, X, PencilLine, Wine as WineIcon,
-  StickyNote,
+  StickyNote, ArrowRightLeft,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { PageHeader } from '../components/layout/PageHeader';
@@ -306,6 +306,7 @@ function QRSection({ wine }: { wine: Wine }) {
 export function WineDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
   const { wines, pending, drinkWine, deleteWine, updateWine } = useWineStore();
   const [wine, setWine] = useState<Wine | null>(null);
@@ -337,6 +338,20 @@ export function WineDetail() {
   useEffect(() => {
     if (wine) setPersonalCommentDraft(wine.personalComment ?? '');
   }, [wine?.id]);
+
+  /** Depuis la vue casier : navigation avec state pour ouvrir directement le sélecteur */
+  useEffect(() => {
+    if (!wine) return;
+    const open = (location.state as { openSlotPicker?: boolean } | undefined)?.openSlotPicker;
+    if (!open) return;
+    setSelectedSlots(wine.slotIds ?? []);
+    setSelectedLocationId(wine.locationId ?? '');
+    setShowSlotPicker(true);
+    navigate(
+      { pathname: location.pathname, search: location.search, hash: location.hash },
+      { replace: true, state: {} }
+    );
+  }, [wine, location.state, location.pathname, location.search, location.hash, navigate]);
 
   if (!wine) return null;
 
@@ -518,6 +533,29 @@ export function WineDetail() {
           </div>
         </div>
 
+        {/* Emplacement — action explicite pour déplacer */}
+        {wine.importStatus === 'available' && (
+          <Card className="!p-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-[var(--radius-md)] bg-accent/15 flex items-center justify-center flex-shrink-0">
+                <MapPin size={18} className="text-accent-bright" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-text-muted font-medium">Emplacement dans la cave</p>
+                <p className="text-sm font-mono text-text mt-0.5 truncate">
+                  {wine.slotIds?.length ? wine.slotIds.join(', ') : 'Aucune case assignée'}
+                </p>
+                <p className="text-[10px] text-text-muted mt-1 leading-snug">
+                  Changez de cave ou de cases libres ; l’ancien emplacement sera libéré à l’enregistrement.
+                </p>
+              </div>
+              <Button type="button" variant="secondary" size="sm" className="flex-shrink-0" onClick={handleOpenSlotPicker}>
+                <ArrowRightLeft size={14} /> Déplacer
+              </Button>
+            </div>
+          </Card>
+        )}
+
         {/* Description */}
         {wine.description && (
           <Card>
@@ -656,8 +694,12 @@ export function WineDetail() {
       </BottomSheet>
 
       {/* Slot picker */}
-      <BottomSheet open={showSlotPicker} onClose={() => setShowSlotPicker(false)} title="Changer l'emplacement">
+      <BottomSheet open={showSlotPicker} onClose={() => setShowSlotPicker(false)} title="Déplacer la bouteille">
         <div className="space-y-4">
+          <p className="text-xs text-text-secondary leading-relaxed -mt-1">
+            Choisissez l’emplacement (cave ou frigo), puis touchez les cases vides — jusqu’à autant que votre quantité
+            ({wine.quantity || 1}). Les cases déjà prises par d’autres bouteilles ne sont pas sélectionnables.
+          </p>
           <SlotPicker
             selectedSlots={selectedSlots}
             selectedLocationId={selectedLocationId}
