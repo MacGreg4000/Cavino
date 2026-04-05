@@ -47,6 +47,99 @@ IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif', '.tiff',
 PHOTO_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
 MIN_PHOTO_SIZE   = 10 * 1024  # 10 KB
 
+# ─── Base de connaissance vin ────────────────────────────────────────────────────
+
+WINE_KNOWLEDGE = """
+═══ RÉFÉRENTIEL ŒNOLOGIQUE (à utiliser pour valider chaque champ avant de répondre) ═══
+
+── CÉPAGES PAR APPELLATION (ne jamais utiliser un cépage hors liste pour l'appellation identifiée) ──
+Valpolicella / Amarone / Ripasso / Recioto :
+  Obligatoires : Corvina Veronese (45-95%), Corvinone (max 50% en substitution Corvina), Rondinella (5-30%)
+  Optionnels : Molinara, Oseleta, Negrara, Dindarella — JAMAIS Nebbiolo, Sangiovese, Barbera
+
+Barolo / Barbaresco / Langhe Nebbiolo / Gattinara : Nebbiolo uniquement
+
+Chianti / Chianti Classico / Morellino di Scansano : Sangiovese (min 70%), Canaiolo, Colorino, Merlot, Cab. Sauv.
+Brunello di Montalcino : Sangiovese Grosso (Brunello) 100%
+Vino Nobile di Montepulciano : Prugnolo Gentile (Sangiovese), Canaiolo
+Montepulciano d'Abruzzo : Montepulciano (≠ Vino Nobile !)
+
+Bordeaux rouge : Cabernet Sauvignon, Merlot, Cabernet Franc, Petit Verdot, Malbec
+Bordeaux blanc sec : Sauvignon Blanc, Sémillon, Muscadelle
+Bordeaux liquoreux (Sauternes/Barsac) : Sémillon, Sauvignon Blanc, Muscadelle
+
+Bourgogne rouge : Pinot Noir uniquement (sauf Beaujolais = Gamay)
+Bourgogne blanc : Chardonnay uniquement
+Beaujolais : Gamay uniquement
+
+Champagne / Crémant de Bourgogne : Chardonnay, Pinot Noir, Meunier (Pinot Meunier)
+Crémant d'Alsace : Pinot Blanc, Auxerrois, Pinot Gris, Pinot Noir, Riesling, Chardonnay
+Crémant de Loire : Chenin Blanc, Cabernet Franc, Chardonnay, Pinot Noir
+
+Alsace : Riesling, Gewurztraminer, Pinot Gris, Muscat, Pinot Blanc, Sylvaner, Auxerrois, Pinot Noir
+Loire rouge : Cabernet Franc (Chinon, Bourgueil, Saumur-Champigny), Gamay (Touraine)
+Loire blanc : Chenin Blanc (Vouvray, Savennières, Anjou), Sauvignon Blanc (Sancerre, Pouilly-Fumé, Quincy)
+  Muscadet : Melon de Bourgogne uniquement
+
+Rhône Nord rouge : Syrah uniquement (Hermitage, Côte-Rôtie, Cornas, Saint-Joseph, Crozes-Hermitage)
+Rhône Nord blanc : Viognier (Condrieu), Marsanne, Roussanne
+Rhône Sud rouge : Grenache, Syrah, Mourvèdre, Cinsault, Counoise (Châteauneuf-du-Pape, Gigondas, Vacqueyras)
+Rhône Sud blanc : Grenache Blanc, Clairette, Roussanne, Marsanne, Bourboulenc
+
+Rioja / Ribera del Duero : Tempranillo (Tinta Fina), Garnacha, Graciano, Mazuelo (Carignan)
+Priorat : Garnacha, Cariñena (Mazuelo), Cabernet Sauvignon, Syrah, Merlot
+
+Douro / Porto rouge : Touriga Nacional, Touriga Franca, Tinta Roriz (Tempranillo), Tinta Barroca, Tinto Cão
+Vinho Verde blanc : Alvarinho (Albariño), Loureiro, Arinto, Trajadura
+
+Allemagne Riesling : Riesling uniquement (toutes régions sauf exceptions Spätburgunder = Pinot Noir)
+Autriche : Grüner Veltliner, Riesling, Blaufränkisch, Zweigelt, Saint-Laurent
+
+Provence rosé : Grenache, Cinsault, Mourvèdre, Syrah, Carignan, Rolle (Vermentino)
+Bandol rouge : Mourvèdre (min 50%), Grenache, Cinsault
+Cahors : Malbec (Côt, min 70%), Merlot, Tannat
+Madiran : Tannat (min 40%), Cabernet Franc, Cabernet Sauvignon
+
+── SERVICE (températures de service indicatives) ──
+Champagne / Crémant / Pétillant : 6-8°C
+Blanc léger et sec (Muscadet, Alsace Pinot Blanc, Vinho Verde) : 8-10°C
+Rosé léger : 8-10°C
+Blanc aromatique (Sauvignon Blanc, Riesling sec, Gewurztraminer) : 9-11°C
+Blanc charpenté (Chardonnay boisé, Bourgogne blanc, Viognier) : 10-13°C
+Blanc liquoreux / moelleux : 8-12°C
+Rouge léger (Beaujolais, Pinot Noir d'Alsace, Loire léger) : 13-15°C
+Rouge moyen (Bourgogne rouge, Loire rouge, Rioja Crianza) : 15-17°C
+Rouge puissant (Bordeaux, Rhône, Barolo, Amarone, Cahors) : 16-18°C
+Porto tawny / vieux : 14-16°C | Porto ruby / vintage : 16-18°C
+Vins doux naturels (Banyuls, Maury) : 14-16°C
+
+── DÉCANTATION ──
+Obligatoire (2-3h) : Amarone, Barolo, Barbaresco, Brunello, Hermitage, Cornas, Cahors puissant, Madiran
+Recommandée (1-2h) : Bordeaux rouge puissant, Côte-Rôtie, Châteauneuf-du-Pape, Bandol, Priorat, Ribera del Duero
+Courte (30-60 min) : Bourgogne rouge de garde, Rioja Reserva/Gran Reserva, Douro rouge
+Déconseillée : Vieux Pinot Noir (> 15 ans), Vieux Bordeaux (> 20 ans), Champagne, Blanc
+Pour les vins délicats et vieux : carafer juste avant de servir
+
+── CLASSIFICATIONS ──
+Italie : DOCG (plus haute) > DOC > IGT > Vino da Tavola
+France : AOC/AOP > IGP/VDP > Vin de France | Grand Cru > Premier Cru > Village > Régional
+Espagne : DOCa (Rioja, Priorat) > DO > IGP > Vino | Gran Reserva > Reserva > Crianza > Joven
+Portugal : DOC > IPR > Vinho Regional > Vinho
+Allemagne : Prädikatswein (Kabinett < Spätlese < Auslese < BA < TBA < Eiswein) > QbA > Landwein
+Autriche : DAC > Qualitätswein > Landwein
+
+── ACCORDS METS-VINS (exemples de précision attendue) ──
+BON : "côte de bœuf sauce bordelaise", "risotto aux truffes noires", "homard à l'américaine"
+TROP VAGUE : "viande rouge", "poisson", "fromage" (toujours préciser la préparation et la sauce)
+
+── STRUCTURE DES MENTIONS (identity.mentions) ──
+Ne pas répéter le nom du domaine ni de l'appellation déjà présents dans d'autres champs.
+Utiliser pour : Bio/Biodynamie, Vieilles Vignes, Vendanges tardives, Sélection de grains nobles,
+               mentions de terroir spécifiques (Lieu-dit, Climat), cuvées spéciales, élevage notable
+
+═══════════════════════════════════════════════════════════════════════════════════════
+"""
+
 # ─── Logging ─────────────────────────────────────────────────────────────────────
 
 logging.basicConfig(
@@ -173,18 +266,34 @@ def image_to_base64(path: Path) -> str:
 
 # ─── Ollama prompt ────────────────────────────────────────────────────────────────
 
-SYSTEM_PROMPT = """Tu es un expert en vins et spiritueux. Analyse les étiquettes dans les images fournies.
+SYSTEM_PROMPT = """{knowledge}
+
+Tu es un expert en vins et spiritueux. Analyse les étiquettes dans les images fournies.
 Retourne UNIQUEMENT un objet JSON valide, sans markdown, sans bloc de code, sans explication.
 Date du jour : {today}
+
+RÈGLE ABSOLUE ANTI-HALLUCINATION :
+- N'invente JAMAIS une donnée absente de l'étiquette. Si une information n'est pas lisible ou pas présente → null ou [].
+- "domain" = nom du domaine/château/producteur (ex: "Villa Canestrari"), PAS l'appellation.
+- "appellation" = l'appellation officielle (ex: "Amarone della Valpolicella DOCG").
+- "awards" = [] si aucune médaille n'est visible sur l'étiquette. NE PAS inventer de médailles.
+- "purchase.purchasePrice" = null si le prix n'est pas sur l'étiquette. NE PAS inventer de prix.
+- "purchase.estimatedValue" = estimation basée sur ta connaissance du marché (acceptable), sinon null.
+- "purchase.source" = null si la source d'achat n'est pas connue. NE PAS inventer "Wine Merchant".
+- "classification" = la mention légale exacte visible (DOC, DOCG, AOC, AOP...), null si absente.
+- "village" = null si non mentionné (jamais "N/A").
+- "vintage" = LIRE ATTENTIVEMENT l'année sur l'étiquette ou la capsule. C'est souvent un nombre à 4 chiffres (ex: 2021, 2018). Ne jamais mettre null si une année est visible.
+- "grapes" = uniquement les cépages réels de l'appellation ou visibles sur l'étiquette. Ne pas inventer.
+- Tous les textes (description, accords, notes) doivent être rédigés en FRANÇAIS.
 
 SCHÉMA OBLIGATOIRE — tous les champs sont requis, champs inconnus → null, JAMAIS inventés :
 
 {{
   "schemaVersion": "1.0",
   "identity": {{
-    "name": "string",
-    "domain": "string",
-    "appellation": "string",
+    "name": "string — NOM DE LA CUVÉE (ex: Phanos, Grande Réserve...)",
+    "domain": "string — NOM DU DOMAINE/CHÂTEAU/PRODUCTEUR (ex: Villa Canestrari, Château Margaux)",
+    "appellation": "string — APPELLATION OFFICIELLE avec mention légale (ex: Amarone della Valpolicella DOCG)",
     "vintage": integer_ou_null,
     "nonVintage": boolean,
     "type": "red|white|rosé|champagne|crémant|sweet|fortified|sparkling",
@@ -247,13 +356,17 @@ SCHÉMA OBLIGATOIRE — tous les champs sont requis, champs inconnus → null, J
 
 RÈGLES CRITIQUES :
 - schemaVersion = "1.0" (toujours présent, jamais absent)
+- identity.domain = NOM DU DOMAINE/PRODUCTEUR, jamais l'appellation
 - identity.bottleSize DOIT être égal à purchase.bottleSize (même entier exact)
 - analysis.palate est TOUJOURS une STRING, jamais un objet/dict
 - service.decantingTime = null si et seulement si decanting = false
-- Tous les tableaux vides = [] jamais null
+- Tous les tableaux vides = [] jamais null (awards = [] si aucune médaille visible)
 - meta.importStatus = "pending" (toujours, sans exception)
 - meta.photoFilename = nom de base sans extension (à laisser vide "")
-- Les accords (pairings) doivent être très précis et spécifiques : "côte de bœuf sauce bordelaise" pas "viande rouge"
+- village = null si non mentionné sur l'étiquette (jamais "N/A")
+- purchase.purchasePrice = null si absent de l'étiquette (ne jamais inventer)
+- Les accords (pairings) doivent être très précis : "côte de bœuf sauce bordelaise" pas "viande rouge"
+- pairings.ideal doit contenir AU MOINS 6 accords distincts et précis
 
 CHAMPAGNES et CRÉMANTS — enrichissements obligatoires dans identity.mentions :
 - Statut producteur (NM, RM, CM, RC, MA)
@@ -268,7 +381,7 @@ Retourne UNIQUEMENT le JSON, rien d'autre."""
 def analyze_with_ollama(jpeg_paths: list[Path]) -> Optional[dict]:
     """Send images to Ollama vision model, return parsed wine dict or None."""
     today = date.today().isoformat()
-    prompt = SYSTEM_PROMPT.format(today=today)
+    prompt = SYSTEM_PROMPT.format(today=today, knowledge=WINE_KNOWLEDGE.strip())
 
     images_b64: list[str] = []
     for p in jpeg_paths:
@@ -333,6 +446,18 @@ def validate_and_fix(data: dict, basename: str) -> dict:
     analysis = data.setdefault('analysis', {})
     meta     = data.setdefault('meta', {})
 
+    # domain must not be the appellation — if identical, use producer instead
+    domain     = identity.get('domain', '') or ''
+    appellation = identity.get('appellation', '') or ''
+    producer   = identity.get('producer', '') or ''
+    if domain and appellation and domain.lower().strip() == appellation.lower().strip():
+        log.warning(f"domain == appellation ({domain!r}) → remplacé par producer ({producer!r})")
+        identity['domain'] = producer or domain
+
+    # village "N/A" → null
+    if identity.get('village') in ('N/A', 'n/a', 'NA', '', 'None', 'none'):
+        identity['village'] = None
+
     # bottleSize consistency
     bottle_size = identity.get('bottleSize') or purchase.get('bottleSize') or 75
     if bottle_size not in (37, 75, 150, 300, 600):
@@ -353,6 +478,20 @@ def validate_and_fix(data: dict, basename: str) -> dict:
     if not service.get('decanting', False):
         service['decantingTime'] = None
 
+    # Force decanting for wine types that always require it
+    wine_type = identity.get('type', '')
+    appellation_lower = (identity.get('appellation', '') or '').lower()
+    ALWAYS_DECANT_TYPES = {'red', 'fortified'}
+    ALWAYS_DECANT_APPELLATIONS = {'amarone', 'barolo', 'barbaresco', 'brunello', 'hermitage', 'côte-rôtie', 'cahors'}
+    needs_decant = (
+        wine_type in ALWAYS_DECANT_TYPES and
+        any(k in appellation_lower for k in ALWAYS_DECANT_APPELLATIONS)
+    )
+    if needs_decant and not service.get('decanting', False):
+        log.warning(f"decanting=false sur un {appellation_lower} → forcé à true (90 min)")
+        service['decanting'] = True
+        service['decantingTime'] = service.get('decantingTime') or 90
+
     # Empty lists, not null
     for key in ('grapes', 'mentions'):
         if identity.get(key) is None:
@@ -360,11 +499,35 @@ def validate_and_fix(data: dict, basename: str) -> dict:
 
     pairings = data.setdefault('pairings', {})
     for key in ('ideal', 'good', 'avoid', 'occasions', 'cheese'):
-        if pairings.get(key) is None:
+        val = pairings.get(key)
+        if val is None:
             pairings[key] = []
+        elif isinstance(val, str):
+            # Model returned a comma-separated string instead of array
+            log.warning(f"pairings.{key} était une string — conversion en liste")
+            pairings[key] = [v.strip() for v in val.split(',') if v.strip()]
 
-    if data.get('awards') is None:
+    # awards must be a list — never invented data but can't detect that programmatically
+    if not isinstance(data.get('awards'), list):
         data['awards'] = []
+
+    # Remove duplicates from pairing lists (preserve order)
+    for key in ('ideal', 'good', 'avoid', 'occasions', 'cheese'):
+        lst = pairings.get(key, [])
+        if isinstance(lst, list):
+            seen: set[str] = set()
+            deduped = []
+            for item in lst:
+                low = item.lower().strip()
+                if low not in seen:
+                    seen.add(low)
+                    deduped.append(item)
+            pairings[key] = deduped
+
+    # source "Wine Merchant" / "Unknown" are generic placeholders → null
+    generic_sources = {'wine merchant', 'unknown', 'n/a', 'na', 'none', ''}
+    if str(purchase.get('source', '') or '').lower().strip() in generic_sources:
+        purchase['source'] = None
 
     # meta
     meta['importStatus'] = 'pending'
