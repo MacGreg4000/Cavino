@@ -736,8 +736,24 @@ def process_group(
         photo_info = f"🖼️  officielle → {photo_path.name}"
         log.info(f"Photo officielle écrite: {photo_path.name}")
     else:
-        note = wine_data['meta'].get('notes') or ''
-        wine_data['meta']['notes'] = (note + ' | Aucune photo officielle trouvée').lstrip(' | ')
+        # Fallback : utiliser la photo de scan (premier JPEG converti)
+        if jpegs:
+            fallback_src = jpegs[0]
+            fallback_dst = DEST / f"{basename}.jpg"
+            try:
+                import shutil
+                shutil.copy2(fallback_src, fallback_dst)
+                photo_info = f"📷 scan (fallback) → {fallback_dst.name}"
+                log.info(f"Photo scan utilisée comme fallback: {fallback_dst.name}")
+                note = wine_data['meta'].get('notes') or ''
+                wine_data['meta']['notes'] = (note + ' | Photo scan utilisée (aucune officielle trouvée)').lstrip(' | ')
+            except Exception as e:
+                log.warning(f"Impossible de copier la photo scan: {e}")
+                note = wine_data['meta'].get('notes') or ''
+                wine_data['meta']['notes'] = (note + ' | Aucune photo officielle trouvée').lstrip(' | ')
+        else:
+            note = wine_data['meta'].get('notes') or ''
+            wine_data['meta']['notes'] = (note + ' | Aucune photo officielle trouvée').lstrip(' | ')
         with open(json_path, 'w', encoding='utf-8') as f:
             json.dump(wine_data, f, ensure_ascii=False, indent=2)
 
