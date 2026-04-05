@@ -113,12 +113,14 @@ Rouge puissant (Bordeaux, Rhône, Barolo, Amarone, Cahors) : 16-18°C
 Porto tawny / vieux : 14-16°C | Porto ruby / vintage : 16-18°C
 Vins doux naturels (Banyuls, Maury) : 14-16°C
 
-── DÉCANTATION ──
-Obligatoire (2-3h) : Amarone, Barolo, Barbaresco, Brunello, Hermitage, Cornas, Cahors puissant, Madiran
-Recommandée (1-2h) : Bordeaux rouge puissant, Côte-Rôtie, Châteauneuf-du-Pape, Bandol, Priorat, Ribera del Duero
-Courte (30-60 min) : Bourgogne rouge de garde, Rioja Reserva/Gran Reserva, Douro rouge
+── DÉCANTATION (decantingTime TOUJOURS en MINUTES) ──
+Obligatoire : Amarone (120-180 min), Barolo/Barbaresco (120-240 min), Brunello (120-180 min),
+              Hermitage/Cornas (90-120 min), Cahors puissant (90-120 min), Madiran (60-90 min)
+Recommandée : Bordeaux rouge puissant (60-120 min), Côte-Rôtie (60-90 min),
+              Châteauneuf-du-Pape (45-60 min), Bandol (60-90 min), Priorat (60 min), Ribera del Duero (45-60 min)
+Courte : Bourgogne rouge de garde (30-45 min), Rioja Reserva (30-45 min), Douro rouge (30 min)
 Déconseillée : Vieux Pinot Noir (> 15 ans), Vieux Bordeaux (> 20 ans), Champagne, Blanc
-Pour les vins délicats et vieux : carafer juste avant de servir
+IMPORTANT : decantingTime est en MINUTES (ex: 2h = 120, 90 min = 90). Jamais en heures.
 
 ── CLASSIFICATIONS ──
 Italie : DOCG (plus haute) > DOC > IGT > Vino da Tavola
@@ -133,9 +135,19 @@ BON : "côte de bœuf sauce bordelaise", "risotto aux truffes noires", "homard �
 TROP VAGUE : "viande rouge", "poisson", "fromage" (toujours préciser la préparation et la sauce)
 
 ── STRUCTURE DES MENTIONS (identity.mentions) ──
-Ne pas répéter le nom du domaine ni de l'appellation déjà présents dans d'autres champs.
-Utiliser pour : Bio/Biodynamie, Vieilles Vignes, Vendanges tardives, Sélection de grains nobles,
-               mentions de terroir spécifiques (Lieu-dit, Climat), cuvées spéciales, élevage notable
+Ne JAMAIS répéter le nom du domaine, du producteur, de la cuvée ou de l'appellation (déjà dans d'autres champs).
+Utiliser UNIQUEMENT pour : Bio/Biodynamie, Agriculture raisonnée, Vieilles Vignes, Vendanges tardives,
+  Sélection de grains nobles, mentions de terroir (Lieu-dit, Climat, MGA), élevage notable (fût de chêne neuf, etc.)
+Si aucune mention spéciale visible sur l'étiquette → []
+
+── ACCORDS (pairings) ──
+- pairings.ideal DOIT contenir AU MINIMUM 6 accords spécifiques et distincts
+- pairings.good DOIT contenir AU MINIMUM 5 accords
+- pairings.avoid DOIT contenir AU MINIMUM 4 incompatibilités
+- Chaque accord doit inclure la préparation/sauce (ex: "gigot d'agneau au romarin", pas "agneau")
+- Exemples pour un Amarone : "osso-buco à la gremolata", "côte de bœuf sauce bordelaise",
+  "risotto au radicchio et speck", "gibier à plumes rôti aux baies de genièvre",
+  "fromage Valpolicella Monteveronese affiné", "chocolate noir 70% aux noisettes"
 
 ═══════════════════════════════════════════════════════════════════════════════════════
 """
@@ -478,6 +490,12 @@ def validate_and_fix(data: dict, basename: str) -> dict:
     if not service.get('decanting', False):
         service['decantingTime'] = None
 
+    # decantingTime: convert hours to minutes if model returned a small value (≤ 6 → likely hours)
+    dt = service.get('decantingTime')
+    if service.get('decanting') and dt is not None and isinstance(dt, (int, float)) and dt <= 6:
+        log.warning(f"decantingTime={dt} semble être en heures → converti en minutes ({int(dt * 60)})")
+        service['decantingTime'] = int(dt * 60)
+
     # Force decanting for wine types that always require it
     wine_type = identity.get('type', '')
     appellation_lower = (identity.get('appellation', '') or '').lower()
@@ -496,6 +514,18 @@ def validate_and_fix(data: dict, basename: str) -> dict:
     for key in ('grapes', 'mentions'):
         if identity.get(key) is None:
             identity[key] = []
+
+    # Remove mentions that duplicate domain/producer/name/appellation
+    redundant = {
+        slugify(identity.get('domain', '') or ''),
+        slugify(identity.get('producer', '') or ''),
+        slugify(identity.get('name', '') or ''),
+        slugify(identity.get('appellation', '') or ''),
+    } - {'', 'inconnu'}
+    identity['mentions'] = [
+        m for m in identity.get('mentions', [])
+        if slugify(m) not in redundant
+    ]
 
     pairings = data.setdefault('pairings', {})
     for key in ('ideal', 'good', 'avoid', 'occasions', 'cheese'):
