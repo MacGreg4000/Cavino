@@ -134,6 +134,19 @@ Autriche : DAC > Qualitätswein > Landwein
 BON : "côte de bœuf sauce bordelaise", "risotto aux truffes noires", "homard à l'américaine"
 TROP VAGUE : "viande rouge", "poisson", "fromage" (toujours préciser la préparation et la sauce)
 
+RÈGLE CRITIQUE CHAMPAGNE — les accords champagne sont TRÈS DIFFÉRENTS des vins rouges :
+NE JAMAIS mettre "côte de bœuf" ou "gibier" dans les accords d'un champagne.
+Champagne Blanc de Blancs (Chardonnay) : huîtres, langoustines, sushi, carpaccio de Saint-Jacques, tartare de daurade
+Champagne Blanc de Noirs (Pinot Noir dominant) : charcuterie fine, volaille en sauce crémeuse, champignons truffés, foie gras mi-cuit
+Champagne Brut NV assemblage : apéritif, verrines, blinis au saumon, fromages frais, fruits de mer
+Champagne millésimé : homard à la bisque, pigeon en croûte, ris de veau, fromages affinés
+
+── GRANDS CRUS vs PREMIERS CRUS CHAMPAGNE ──
+Villages GRAND CRU (100%) : Ambonnay, Aÿ, Beaumont-sur-Vesle, Bouzy, Chouilly, Cramant, Le Mesnil-sur-Oger,
+  Louvois, Mailly-Champagne, Oger, Oiry, Puisieulx, Sillery, Tours-sur-Marne, Verzenay, Verzy
+Villages PREMIER CRU (90-99%) : tous les autres villages classés
+→ Si l'étiquette dit "GRAND CRU" ou si le village est dans la liste → classification = "Grand Cru"
+
 ── STRUCTURE DES MENTIONS (identity.mentions) ──
 Ne JAMAIS répéter le nom du domaine, du producteur, de la cuvée ou de l'appellation (déjà dans d'autres champs).
 Utiliser UNIQUEMENT pour : Bio/Biodynamie, Agriculture raisonnée, Vieilles Vignes, Vendanges tardives,
@@ -318,7 +331,9 @@ RÈGLE ABSOLUE ANTI-HALLUCINATION :
   Si le seul chiffre visible est manifestement une année de fondation (avant 2000 pour un vin non millésimé courant) → vintage = null + nonVintage = true.
   Pour les champagnes et crémants sans année de récolte explicite → vintage = null + nonVintage = true.
 - "grapes" = uniquement les cépages réels de l'appellation ou visibles sur l'étiquette. Ne pas inventer.
-- Tous les textes (description, accords, notes) doivent être rédigés en FRANÇAIS.
+- Tous les textes SANS EXCEPTION doivent être rédigés en FRANÇAIS : description, accords, arômes, notes, agingNotes, style, occasions, glassType.
+- country, region, subRegion : utiliser les noms français (Italie pas Italy, Vénétie pas Veneto, Espagne pas Spain).
+- subRegion : toujours renseigner si connue (ex: Valpolicella pour un Amarone, Montagne de Reims pour Verzenay).
 
 SCHÉMA OBLIGATOIRE — tous les champs sont requis, champs inconnus → null, JAMAIS inventés :
 
