@@ -1,0 +1,20 @@
+version: "3.9"
+
+services:
+  cave-scan:
+    build: .
+    container_name: cave-scan
+    restart: unless-stopped
+    environment:
+      OLLAMA_URL:    "http://macciolupo.tplinkdns.com:11434"
+      SEARXNG_URL:   "http://macciolupo.tplinkdns.com:8888"
+      OLLAMA_MODEL:  "qwen2.5vl:7b"
+      CAVE_BASE_DIR: "/data/cave"
+      SETTLE_DELAY:  "3.0"
+    volumes:
+      - /volume1/docker/cavino/data/inbox:/data/cave
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

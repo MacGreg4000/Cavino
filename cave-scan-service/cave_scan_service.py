@@ -1,0 +1,722 @@
+#!/usr/bin/env python3
+"""
+Cave Scan Service
+Surveillance dossier → Ollama vision (qwen2.5vl:7b) → SearXNG photo → JSON + photo
+Déploiement : Docker sur NAS Synology
+"""
+import os
+import re
+import sys
+import json
+import time
+import base64
+import logging
+import unicodedata
+import threading
+from io import BytesIO
+from pathlib import Path
+from datetime import date
+from typing import Optional
+
+import requests
+from PIL import Image
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+
+try:
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+    HEIC_SUPPORTED = True
+except ImportError:
+    HEIC_SUPPORTED = False
+
+# ─── Configuration ───────────────────────────────────────────────────────────────
+
+OLLAMA_URL   = os.getenv('OLLAMA_URL',   'http://macciolupo.tplinkdns.com:11434')
+OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'qwen2.5vl:7b')
+SEARXNG_URL  = os.getenv('SEARXNG_URL',  'http://macciolupo.tplinkdns.com:8888')
+CAVE_BASE    = Path(os.getenv('CAVE_BASE_DIR', '/data/cave'))
+SETTLE       = float(os.getenv('SETTLE_DELAY', '3.0'))
+
+SOURCE = CAVE_BASE / 'A analyser'
+DEST   = CAVE_BASE / 'Prêt à être importé'
+REF    = CAVE_BASE / 'importé'
+TEMP   = CAVE_BASE / '.previews'
+
+IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif', '.tiff', '.bmp'}
+PHOTO_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
+MIN_PHOTO_SIZE   = 10 * 1024  # 10 KB
+
+# ─── Logging ─────────────────────────────────────────────────────────────────────
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)-8s %(message)s',
+    datefmt='%Y-%m-%dT%H:%M:%S',
+    stream=sys.stdout,
+)
+log = logging.getLogger('cave-scan')
+
+# ─── Photo grouping ───────────────────────────────────────────────────────────────
+
+def group_photos(files: list[Path]) -> list[list[Path]]:
+    """Group recto/verso pairs. Returns list of groups (1 or 2 photos each)."""
+    files = sorted(files)
+    used: set[Path] = set()
+    groups: list[list[Path]] = []
+
+    suffix_pairs = [
+        ('_1', '_2'), ('_a', '_b'), ('_front', '_back'), ('_recto', '_verso'),
+    ]
+
+    for f in files:
+        if f in used:
+            continue
+
+        stem = f.stem
+        matched = False
+
+        # Priority 1: explicit suffixes
+        for s1, s2 in suffix_pairs:
+            if stem.endswith(s1):
+                prefix = stem[:-len(s1)]
+                partner = next(
+                    (x for x in files if x.stem == prefix + s2 and x not in used), None
+                )
+                if partner:
+                    groups.append([f, partner])
+                    used.update([f, partner])
+                    matched = True
+                    break
+
+        if matched:
+            continue
+
+        # Priority 2: consecutive numbers
+        m = re.match(r'^(.*?)(\d+)$', stem)
+        if m:
+            prefix, num = m.group(1), int(m.group(2))
+            next_stem = f'{prefix}{num + 1}'
+            partner = next(
+                (x for x in files if x.stem == next_stem and x not in used), None
+            )
+            if partner:
+                groups.append([f, partner])
+                used.update([f, partner])
+                continue
+
+        # Solo
+        if f not in used:
+            groups.append([f])
+            used.add(f)
+
+    return groups
+
+# ─── Filename generation ──────────────────────────────────────────────────────────
+
+def slugify(text: str) -> str:
+    """Lowercase, remove accents, replace special chars with hyphens."""
+    if not text:
+        return 'inconnu'
+    nfkd = unicodedata.normalize('NFKD', text)
+    ascii_text = ''.join(c for c in nfkd if not unicodedata.combining(c))
+    ascii_text = ascii_text.lower()
+    ascii_text = re.sub(r'[^a-z0-9]+', '-', ascii_text)
+    ascii_text = re.sub(r'-+', '-', ascii_text)
+    return ascii_text.strip('-')
+
+
+def make_basename(wine: dict, today: str, suffix: str = '') -> str:
+    """Generate YYYY-MM-DD_domain-name-vintage basename."""
+    identity = wine.get('identity', {})
+    domain  = identity.get('domain') or ''
+    name    = identity.get('name') or ''
+    vintage = identity.get('vintage')
+    nv      = identity.get('nonVintage', False)
+
+    parts: list[str] = []
+    if domain:
+        parts.append(slugify(domain))
+    # Avoid repeating if name == domain
+    if name and slugify(name) != slugify(domain):
+        parts.append(slugify(name))
+
+    if nv:
+        parts.append('nv')
+    elif vintage:
+        parts.append(str(vintage))
+
+    base = today + '_' + '-'.join(filter(None, parts))
+    base = re.sub(r'-+', '-', base)
+    return base + suffix
+
+# ─── Image handling ───────────────────────────────────────────────────────────────
+
+def convert_to_jpeg(src: Path) -> Optional[Path]:
+    """Convert any image (incl. HEIC) to JPEG in TEMP dir. Returns path or None."""
+    TEMP.mkdir(parents=True, exist_ok=True)
+    dest = TEMP / (src.stem + '_preview.jpg')
+    try:
+        img = Image.open(src)
+        if img.mode in ('RGBA', 'P', 'LA'):
+            img = img.convert('RGB')
+        img.save(dest, 'JPEG', quality=90)
+        return dest
+    except Exception as e:
+        log.error(f"Conversion JPEG échouée pour {src.name}: {e}")
+        return None
+
+
+def image_to_base64(path: Path) -> str:
+    with open(path, 'rb') as f:
+        return base64.b64encode(f.read()).decode('utf-8')
+
+# ─── Ollama prompt ────────────────────────────────────────────────────────────────
+
+SYSTEM_PROMPT = """Tu es un expert en vins et spiritueux. Analyse les étiquettes dans les images fournies.
+Retourne UNIQUEMENT un objet JSON valide, sans markdown, sans bloc de code, sans explication.
+Date du jour : {today}
+
+SCHÉMA OBLIGATOIRE — tous les champs sont requis, champs inconnus → null, JAMAIS inventés :
+
+{{
+  "schemaVersion": "1.0",
+  "identity": {{
+    "name": "string",
+    "domain": "string",
+    "appellation": "string",
+    "vintage": integer_ou_null,
+    "nonVintage": boolean,
+    "type": "red|white|rosé|champagne|crémant|sweet|fortified|sparkling",
+    "grapes": ["string"],
+    "country": "string",
+    "region": "string",
+    "subRegion": "string_ou_null",
+    "village": "string_ou_null",
+    "classification": "string_ou_null",
+    "mentions": ["string"],
+    "alcohol": number_ou_null,
+    "producer": "string",
+    "bottleSize": 37|75|150|300|600
+  }},
+  "service": {{
+    "servingTempMin": integer,
+    "servingTempMax": integer,
+    "decanting": boolean,
+    "decantingTime": integer_ou_null,
+    "glassType": "string"
+  }},
+  "aging": {{
+    "drinkFrom": integer_ou_null,
+    "drinkUntil": integer_ou_null,
+    "peakFrom": integer_ou_null,
+    "peakUntil": integer_ou_null,
+    "currentPhase": "trop jeune|jeune|optimal|apogée|déclin|passé",
+    "agingNotes": "string"
+  }},
+  "analysis": {{
+    "description": "string",
+    "vintageNotes": "string_ou_null",
+    "aromaProfile": {{"primary": ["string"], "secondary": ["string"], "tertiary": ["string"]}},
+    "palate": "TOUJOURS une chaîne de caractères, JAMAIS un objet ou dict",
+    "style": "string"
+  }},
+  "pairings": {{
+    "ideal": ["minimum 6 accords TRÈS PRÉCIS ex: côte de bœuf sauce bordelaise, pas viande rouge"],
+    "good": ["minimum 5 accords"],
+    "avoid": ["minimum 4 incompatibilités"],
+    "occasions": ["string"],
+    "cheese": ["string"]
+  }},
+  "purchase": {{
+    "purchasePrice": number_ou_null,
+    "estimatedValue": number_ou_null,
+    "source": "string_ou_null",
+    "bottleSize": 37|75|150|300|600
+  }},
+  "awards": [{{"label": "string", "score": "string_ou_null", "year": integer_ou_null}}],
+  "meta": {{
+    "scanDate": "{today}",
+    "confidence": "high|medium|low",
+    "notes": "string_ou_null",
+    "photoQuality": "excellent|good|fair|poor",
+    "importStatus": "pending",
+    "photoFilename": "string_sans_extension"
+  }}
+}}
+
+RÈGLES CRITIQUES :
+- schemaVersion = "1.0" (toujours présent, jamais absent)
+- identity.bottleSize DOIT être égal à purchase.bottleSize (même entier exact)
+- analysis.palate est TOUJOURS une STRING, jamais un objet/dict
+- service.decantingTime = null si et seulement si decanting = false
+- Tous les tableaux vides = [] jamais null
+- meta.importStatus = "pending" (toujours, sans exception)
+- meta.photoFilename = nom de base sans extension (à laisser vide "")
+- Les accords (pairings) doivent être très précis et spécifiques : "côte de bœuf sauce bordelaise" pas "viande rouge"
+
+CHAMPAGNES et CRÉMANTS — enrichissements obligatoires dans identity.mentions :
+- Statut producteur (NM, RM, CM, RC, MA)
+- Style (Blanc de Blancs, Blanc de Noirs, Assemblage, Rosé de saignée, Millésimé, NV)
+- Dosage exact : Brut Nature (0-3 g/L), Extra Brut, Brut, Extra Sec, Sec, Demi-Sec, Doux
+- Cépages champenois avec rôles (Chardonnay, Pinot Noir, Meunier)
+- Pour les NV : vintage = null ET nonVintage = true
+
+Retourne UNIQUEMENT le JSON, rien d'autre."""
+
+
+def analyze_with_ollama(jpeg_paths: list[Path]) -> Optional[dict]:
+    """Send images to Ollama vision model, return parsed wine dict or None."""
+    today = date.today().isoformat()
+    prompt = SYSTEM_PROMPT.format(today=today)
+
+    images_b64: list[str] = []
+    for p in jpeg_paths:
+        try:
+            images_b64.append(image_to_base64(p))
+        except Exception as e:
+            log.warning(f"Impossible de lire {p.name}: {e}")
+
+    if not images_b64:
+        log.error("Aucune image valide à envoyer à Ollama")
+        return None
+
+    payload = {
+        "model": OLLAMA_MODEL,
+        "messages": [{
+            "role": "user",
+            "content": prompt,
+            "images": images_b64,
+        }],
+        "options": {"temperature": 0.1, "num_ctx": 8192},
+        "stream": False,
+    }
+
+    try:
+        resp = requests.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=120)
+        resp.raise_for_status()
+    except requests.Timeout:
+        log.error("Ollama timeout (120s) — originaux préservés")
+        return None
+    except requests.RequestException as e:
+        log.error(f"Erreur réseau Ollama: {e} — originaux préservés")
+        return None
+
+    raw = resp.json().get('message', {}).get('content', '')
+
+    # Strip markdown code blocks if present
+    cleaned = re.sub(r'^```(?:json)?\s*', '', raw.strip(), flags=re.MULTILINE)
+    cleaned = re.sub(r'```\s*$', '', cleaned.strip(), flags=re.MULTILINE)
+    cleaned = cleaned.strip()
+
+    # Find JSON object in response
+    m = re.search(r'\{.*\}', cleaned, re.DOTALL)
+    if m:
+        cleaned = m.group(0)
+
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError as e:
+        log.error(f"JSON invalide retourné par Ollama: {e}")
+        log.error(f"Réponse brute (500 chars): {raw[:500]}")
+        return None
+
+# ─── JSON Validation & Auto-correction ───────────────────────────────────────────
+
+def validate_and_fix(data: dict, basename: str) -> dict:
+    """Validate and auto-correct schema v1.0 constraints."""
+    data['schemaVersion'] = '1.0'
+
+    identity = data.setdefault('identity', {})
+    purchase = data.setdefault('purchase', {})
+    service  = data.setdefault('service', {})
+    analysis = data.setdefault('analysis', {})
+    meta     = data.setdefault('meta', {})
+
+    # bottleSize consistency
+    bottle_size = identity.get('bottleSize') or purchase.get('bottleSize') or 75
+    if bottle_size not in (37, 75, 150, 300, 600):
+        log.warning(f"bottleSize invalide ({bottle_size}) → 75")
+        bottle_size = 75
+    identity['bottleSize'] = bottle_size
+    purchase['bottleSize'] = bottle_size
+
+    # palate must be string
+    if isinstance(analysis.get('palate'), dict):
+        log.warning("analysis.palate était un dict — conversion en string")
+        palate_dict = analysis['palate']
+        analysis['palate'] = '. '.join(str(v) for v in palate_dict.values() if v)
+    elif not isinstance(analysis.get('palate'), str):
+        analysis['palate'] = str(analysis.get('palate', ''))
+
+    # decantingTime must be null if not decanting
+    if not service.get('decanting', False):
+        service['decantingTime'] = None
+
+    # Empty lists, not null
+    for key in ('grapes', 'mentions'):
+        if identity.get(key) is None:
+            identity[key] = []
+
+    pairings = data.setdefault('pairings', {})
+    for key in ('ideal', 'good', 'avoid', 'occasions', 'cheese'):
+        if pairings.get(key) is None:
+            pairings[key] = []
+
+    if data.get('awards') is None:
+        data['awards'] = []
+
+    # meta
+    meta['importStatus'] = 'pending'
+    meta['scanDate']     = meta.get('scanDate') or date.today().isoformat()
+    meta['photoFilename'] = basename
+
+    if meta.get('confidence') not in ('high', 'medium', 'low'):
+        meta['confidence'] = 'medium'
+    if meta.get('photoQuality') not in ('excellent', 'good', 'fair', 'poor'):
+        meta['photoQuality'] = 'fair'
+
+    return data
+
+# ─── SearXNG Photo Search ─────────────────────────────────────────────────────────
+
+def download_and_score(url: str) -> tuple[Optional[bytes], float, str]:
+    """Download image URL, return (bytes, h/w ratio, extension) or (None, 0, '')."""
+    try:
+        resp = requests.get(url, timeout=10, headers={'User-Agent': 'CaveScan/1.0'})
+        resp.raise_for_status()
+        data = resp.content
+    except Exception:
+        return None, 0.0, ''
+
+    if len(data) < MIN_PHOTO_SIZE:
+        return None, 0.0, ''
+
+    try:
+        img = Image.open(BytesIO(data))
+        w, h = img.size
+        ratio = h / w if w > 0 else 0.0
+        ext = Path(url.split('?')[0]).suffix.lower()
+        if ext not in PHOTO_EXTENSIONS:
+            ext = '.jpg'
+        return data, ratio, ext
+    except Exception:
+        return None, 0.0, ''
+
+
+def search_official_photo(wine: dict) -> Optional[tuple[bytes, str]]:
+    """
+    Search for official bottle portrait via SearXNG.
+    Returns (image_bytes, extension) or None.
+    Never uses the scan photo as fallback.
+    """
+    identity = wine.get('identity', {})
+    domain  = identity.get('domain', '') or ''
+    name    = identity.get('name', '') or ''
+    vintage = identity.get('vintage', '') or ''
+
+    queries = [
+        f"{domain} {name} {vintage} bottle wine",
+        f"{domain} {name} {vintage} bouteille",
+        f"{domain} {name} bottle official",
+        f"{domain} {name} wine searcher",
+    ]
+
+    best_ratio = 0.0
+    best_result: Optional[tuple[bytes, str]] = None
+
+    for query in queries:
+        q = query.strip()
+        log.info(f"SearXNG: «{q}»")
+        try:
+            resp = requests.get(
+                f"{SEARXNG_URL}/search",
+                params={'q': q, 'format': 'json', 'categories': 'images', 'language': 'fr'},
+                timeout=15,
+            )
+            resp.raise_for_status()
+            results = resp.json().get('results', [])
+        except Exception as e:
+            log.warning(f"SearXNG erreur: {e}")
+            continue
+
+        for result in results:
+            img_url = result.get('img_src') or result.get('url', '')
+            if not img_url:
+                continue
+
+            # Filter by extension
+            raw_path = img_url.split('?')[0]
+            if Path(raw_path).suffix.lower() not in PHOTO_EXTENSIONS:
+                continue
+
+            data, ratio, ext = download_and_score(img_url)
+            if data is None:
+                continue
+
+            if ratio > best_ratio:
+                best_ratio = ratio
+                best_result = (data, ext)
+                log.debug(f"Nouveau meilleur ratio {ratio:.2f}: {img_url}")
+
+            if best_ratio >= 1.5:
+                log.info(f"Photo officielle trouvée (ratio {best_ratio:.2f}): {img_url}")
+                return best_result
+
+        if best_ratio >= 1.5:
+            break
+
+    if best_result:
+        log.info(f"Meilleure photo disponible (ratio {best_ratio:.2f})")
+        return best_result
+
+    log.warning("Aucune photo officielle valide trouvée")
+    return None
+
+# ─── Core Processing ──────────────────────────────────────────────────────────────
+
+def process_group(
+    photos: list[Path],
+    today: str,
+    used_basenames: set[str],
+) -> tuple[bool, str, str, str, str]:
+    """
+    Process one group (1 or 2 photos).
+    Returns (success, label, confidence, photo_info, basename).
+    On failure, originals are NOT deleted.
+    """
+    names = ', '.join(p.name for p in photos)
+    log.info(f"--- Début traitement: {names}")
+
+    # Convert to JPEG
+    jpegs: list[Path] = []
+    for p in photos:
+        if p.suffix.lower() in ('.heic', '.heif') and not HEIC_SUPPORTED:
+            log.error(f"HEIC non supporté (pillow-heif manquant): {p.name}")
+            return False, p.name, 'low', '', ''
+        j = convert_to_jpeg(p)
+        if j:
+            jpegs.append(j)
+
+    if not jpegs:
+        log.error(f"Aucune image convertible: {names}")
+        return False, names, 'low', '', ''
+
+    # Analyze with Ollama
+    log.info(f"Envoi à Ollama ({len(jpegs)} image(s))...")
+    wine_data = analyze_with_ollama(jpegs)
+
+    if wine_data is None:
+        _cleanup_temp(jpegs)
+        return False, names, 'low', '', ''
+
+    # Generate basename
+    basename = make_basename(wine_data, today)
+    if basename in used_basenames:
+        for sfx in ('-a', '-b', '-c', '-d', '-e'):
+            candidate = basename + sfx
+            if candidate not in used_basenames:
+                basename = candidate
+                break
+    used_basenames.add(basename)
+
+    # Validate & fix JSON
+    wine_data = validate_and_fix(wine_data, basename)
+    confidence = wine_data.get('meta', {}).get('confidence', 'medium')
+
+    # Search official photo
+    photo_result = search_official_photo(wine_data)
+
+    # Write output files
+    DEST.mkdir(parents=True, exist_ok=True)
+    json_path = DEST / f"{basename}.json"
+    with open(json_path, 'w', encoding='utf-8') as f:
+        json.dump(wine_data, f, ensure_ascii=False, indent=2)
+    log.info(f"JSON écrit: {json_path.name}")
+
+    photo_info = '❌ aucune photo'
+    if photo_result:
+        photo_bytes, ext = photo_result
+        photo_path = DEST / f"{basename}{ext}"
+        with open(photo_path, 'wb') as f:
+            f.write(photo_bytes)
+        photo_info = f"🖼️  officielle → {photo_path.name}"
+        log.info(f"Photo officielle écrite: {photo_path.name}")
+    else:
+        note = wine_data['meta'].get('notes') or ''
+        wine_data['meta']['notes'] = (note + ' | Aucune photo officielle trouvée').lstrip(' | ')
+        with open(json_path, 'w', encoding='utf-8') as f:
+            json.dump(wine_data, f, ensure_ascii=False, indent=2)
+
+    # Delete originals (only on success)
+    for p in photos:
+        try:
+            p.unlink()
+            log.info(f"Original supprimé: {p.name}")
+        except Exception as e:
+            log.warning(f"Impossible de supprimer {p.name}: {e}")
+
+    _cleanup_temp(jpegs)
+
+    identity = wine_data.get('identity', {})
+    label = ' '.join(filter(None, [
+        identity.get('domain', ''),
+        identity.get('name', ''),
+        str(identity.get('vintage', '') or ''),
+    ])).strip() or names
+
+    log.info(f"--- Fin traitement: {basename}")
+    return True, label, confidence, photo_info, basename
+
+
+def _cleanup_temp(jpegs: list[Path]):
+    for j in jpegs:
+        try:
+            j.unlink()
+        except Exception:
+            pass
+
+# ─── Batch Processing ─────────────────────────────────────────────────────────────
+
+def process_all_pending():
+    """Process all images currently in SOURCE at startup."""
+    files = [
+        f for f in SOURCE.iterdir()
+        if f.is_file() and f.suffix.lower() in IMAGE_EXTENSIONS
+    ]
+    if not files:
+        return
+    log.info(f"{len(files)} fichier(s) en attente au démarrage")
+    groups = group_photos(files)
+    _run_batch(groups)
+
+
+def _run_batch(groups: list[list[Path]]):
+    """Process all groups and print summary report."""
+    if not groups:
+        return
+
+    today = date.today().isoformat()
+    used_basenames: set[str] = set()
+    total_bottles = len(groups)
+    total_photos  = sum(len(g) for g in groups)
+    results: list[tuple] = []
+
+    for i, group in enumerate(groups, 1):
+        log.info(f"Bouteille {i}/{total_bottles}")
+        result = process_group(group, today, used_basenames)
+        results.append((i, *result))
+
+    # Summary report
+    print('\n' + '━' * 52)
+    print(f"✅ Traitement terminé — {total_bottles} bouteille(s) / {total_photos} photo(s)")
+    for (idx, success, label, confidence, photo_info, basename) in results:
+        icon = '✅' if success else '⚠️'
+        conf_icon = {'high': '🟢', 'medium': '🟡', 'low': '🔴'}.get(confidence, '⚪')
+        print(f"  [{idx}/{total_bottles}] {icon} {conf_icon} {label}")
+        if basename:
+            print(f"         {photo_info} → {basename}.json")
+    print('━' * 52 + '\n')
+
+# ─── Watchdog ─────────────────────────────────────────────────────────────────────
+
+class WinePhotoHandler(FileSystemEventHandler):
+    def __init__(self):
+        self._pending: dict[str, float] = {}
+        self._lock    = threading.Lock()
+        self._timer: Optional[threading.Timer] = None
+
+    def on_created(self, event):
+        if not event.is_directory:
+            self._register(Path(event.src_path))
+
+    def on_moved(self, event):
+        # Catches files moved/copied into the folder
+        if not event.is_directory:
+            self._register(Path(event.dest_path))
+
+    def _register(self, path: Path):
+        if path.suffix.lower() in IMAGE_EXTENSIONS:
+            log.info(f"Détecté: {path.name}")
+            with self._lock:
+                self._pending[str(path)] = time.time()
+            self._schedule()
+
+    def _schedule(self):
+        if self._timer:
+            self._timer.cancel()
+        self._timer = threading.Timer(SETTLE, self._flush)
+        self._timer.daemon = True
+        self._timer.start()
+
+    def _flush(self):
+        now = time.time()
+        with self._lock:
+            ready = {k for k, t in self._pending.items() if now - t >= SETTLE}
+            for k in ready:
+                del self._pending[k]
+
+        if not ready:
+            return
+
+        files = [Path(p) for p in ready if Path(p).exists()]
+        if not files:
+            return
+
+        log.info(f"Traitement de {len(files)} nouveau(x) fichier(s)")
+        groups = group_photos(files)
+        _run_batch(groups)
+
+# ─── Startup ──────────────────────────────────────────────────────────────────────
+
+def ping_ollama() -> bool:
+    """Check Ollama is reachable and model is available."""
+    try:
+        resp = requests.get(f"{OLLAMA_URL}/api/tags", timeout=10)
+        resp.raise_for_status()
+        models = [m['name'] for m in resp.json().get('models', [])]
+        if any(OLLAMA_MODEL in m for m in models):
+            log.info(f"✅ Ollama OK — modèle {OLLAMA_MODEL} disponible")
+            return True
+        log.warning(f"⚠️  Modèle {OLLAMA_MODEL} non trouvé. Disponibles: {models}")
+        log.warning(f"   → Lancer sur Ubuntu: ollama pull {OLLAMA_MODEL}")
+        return False
+    except Exception as e:
+        log.error(f"❌ Ollama inaccessible ({OLLAMA_URL}): {e}")
+        return False
+
+
+def main():
+    log.info("=" * 52)
+    log.info("🍷 Cave Scan Service — démarrage")
+    log.info(f"   Ollama  : {OLLAMA_URL} ({OLLAMA_MODEL})")
+    log.info(f"   SearXNG : {SEARXNG_URL}")
+    log.info(f"   Source  : {SOURCE}")
+    log.info(f"   Dest    : {DEST}")
+    log.info(f"   HEIC    : {'✅ supporté' if HEIC_SUPPORTED else '❌ non supporté (pillow-heif manquant)'}")
+    log.info("=" * 52)
+
+    for d in (SOURCE, DEST, REF, TEMP):
+        d.mkdir(parents=True, exist_ok=True)
+
+    ping_ollama()
+    process_all_pending()
+
+    handler  = WinePhotoHandler()
+    observer = Observer()
+    observer.schedule(handler, str(SOURCE), recursive=False)
+    observer.start()
+    log.info(f"👁️  Surveillance active: {SOURCE}")
+
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        log.info("Arrêt demandé")
+        observer.stop()
+    observer.join()
+    log.info("Cave Scan Service arrêté")
+
+
+if __name__ == '__main__':
+    main()
