@@ -457,7 +457,7 @@ def analyze_with_ollama(jpeg_paths: list[Path]) -> Optional[dict]:
             "content": prompt,
             "images": images_b64,
         }],
-        "options": {"temperature": 0.1, "num_ctx": 16384, "num_predict": 4096},
+        "options": {"temperature": 0.1, "num_ctx": 16384, "num_predict": 4096, "think": False},
         "stream": False,
     }
 
@@ -471,7 +471,19 @@ def analyze_with_ollama(jpeg_paths: list[Path]) -> Optional[dict]:
         log.error(f"Erreur réseau Ollama: {e} — originaux préservés")
         return None
 
-    raw = resp.json().get('message', {}).get('content', '')
+    resp_json = resp.json()
+    message = resp_json.get('message', {})
+    raw = message.get('content', '') or ''
+
+    # qwen3 thinking mode : contenu peut être dans reasoning_content si content est vide
+    if not raw.strip():
+        raw = message.get('reasoning_content', '') or ''
+        if raw.strip():
+            log.debug("Contenu trouvé dans reasoning_content (mode thinking qwen3)")
+        else:
+            log.error(f"Réponse Ollama vide — structure complète: {list(resp_json.keys())}")
+            log.error(f"Message keys: {list(message.keys())}")
+            return None
 
     # Strip markdown code blocks if present
     cleaned = re.sub(r'^```(?:json)?\s*', '', raw.strip(), flags=re.MULTILINE)
