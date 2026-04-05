@@ -257,15 +257,31 @@ def make_basename(wine: dict, today: str, suffix: str = '') -> str:
 
 # ─── Image handling ───────────────────────────────────────────────────────────────
 
-def convert_to_jpeg(src: Path) -> Optional[Path]:
-    """Convert any image (incl. HEIC) to JPEG in TEMP dir. Returns path or None."""
+# Taille minimale du grand côté avant upscale (pixels)
+UPSCALE_MIN_LONG_EDGE = 1600
+
+def convert_to_jpeg(src: Path, upscale: bool = True) -> Optional[Path]:
+    """Convert any image (incl. HEIC) to JPEG in TEMP dir, with optional upscale.
+    Upscale si le grand côté est < UPSCALE_MIN_LONG_EDGE px (améliore la lecture OCR).
+    """
     TEMP.mkdir(parents=True, exist_ok=True)
     dest = TEMP / (src.stem + '_preview.jpg')
     try:
         img = Image.open(src)
         if img.mode in ('RGBA', 'P', 'LA'):
             img = img.convert('RGB')
-        img.save(dest, 'JPEG', quality=90)
+
+        if upscale:
+            w, h = img.size
+            long_edge = max(w, h)
+            if long_edge < UPSCALE_MIN_LONG_EDGE:
+                scale = UPSCALE_MIN_LONG_EDGE / long_edge
+                new_w = int(w * scale)
+                new_h = int(h * scale)
+                img = img.resize((new_w, new_h), Image.LANCZOS)
+                log.info(f"Upscale {src.name}: {w}×{h} → {new_w}×{new_h} (×{scale:.2f})")
+
+        img.save(dest, 'JPEG', quality=92)
         return dest
     except Exception as e:
         log.error(f"Conversion JPEG échouée pour {src.name}: {e}")
@@ -283,6 +299,8 @@ SYSTEM_PROMPT = """{knowledge}
 Tu es un expert en vins et spiritueux. Analyse les étiquettes dans les images fournies.
 Retourne UNIQUEMENT un objet JSON valide, sans markdown, sans bloc de code, sans explication.
 Date du jour : {today}
+
+CONTEXTE PHOTOS : {photo_context}
 
 RÈGLE ABSOLUE ANTI-HALLUCINATION :
 - N'invente JAMAIS une donnée absente de l'étiquette. Si une information n'est pas lisible ou pas présente → null ou [].
@@ -393,7 +411,29 @@ Retourne UNIQUEMENT le JSON, rien d'autre."""
 def analyze_with_ollama(jpeg_paths: list[Path]) -> Optional[dict]:
     """Send images to Ollama vision model, return parsed wine dict or None."""
     today = date.today().isoformat()
-    prompt = SYSTEM_PROMPT.format(today=today, knowledge=WINE_KNOWLEDGE.strip())
+
+    # Contexte adaptatif selon le nombre de photos
+    if len(jpeg_paths) == 1:
+        photo_context = (
+            "Une seule photo de la bouteille est fournie. "
+            "Analyse l'étiquette visible (recto ou verso) et déduis les informations manquantes "
+            "grâce à ta connaissance du vin. Les informations non visibles → null."
+        )
+    else:
+        photo_context = (
+            f"{len(jpeg_paths)} photos de la MÊME bouteille sont fournies (recto + verso ou angles différents). "
+            "IMPORTANT : toutes les images montrent LA MÊME bouteille — ne crée PAS plusieurs entrées. "
+            "Combine les informations de TOUTES les images pour produire une fiche unique et complète. "
+            "Le recto contient généralement le nom, le domaine, l'appellation et le millésime. "
+            "Le verso contient généralement l'alcool, les cépages, les accords, le producteur et les mentions légales. "
+            "Priorité aux informations les plus lisibles parmi toutes les photos."
+        )
+
+    prompt = SYSTEM_PROMPT.format(
+        today=today,
+        knowledge=WINE_KNOWLEDGE.strip(),
+        photo_context=photo_context,
+    )
 
     images_b64: list[str] = []
     for p in jpeg_paths:
