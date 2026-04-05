@@ -457,7 +457,7 @@ def analyze_with_ollama(jpeg_paths: list[Path]) -> Optional[dict]:
             "content": prompt,
             "images": images_b64,
         }],
-        "options": {"temperature": 0.1, "num_ctx": 8192},
+        "options": {"temperature": 0.1, "num_ctx": 16384, "num_predict": 4096},
         "stream": False,
     }
 
