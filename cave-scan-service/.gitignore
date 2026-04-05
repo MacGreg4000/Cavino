@@ -1,0 +1,9 @@
+*.jpg
+*.jpeg
+*.png
+*.heic
+*.heif
+*.webp
+__pycache__/
+*.pyc
+.env
