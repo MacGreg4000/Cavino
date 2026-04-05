@@ -312,7 +312,11 @@ RÈGLE ABSOLUE ANTI-HALLUCINATION :
 - "purchase.source" = null si la source d'achat n'est pas connue. NE PAS inventer "Wine Merchant".
 - "classification" = la mention légale exacte visible (DOC, DOCG, AOC, AOP...), null si absente.
 - "village" = null si non mentionné (jamais "N/A").
-- "vintage" = LIRE ATTENTIVEMENT l'année sur l'étiquette ou la capsule. C'est souvent un nombre à 4 chiffres (ex: 2021, 2018). Ne jamais mettre null si une année est visible.
+- "vintage" = LIRE ATTENTIVEMENT l'année sur l'étiquette ou la capsule. C'est souvent un nombre à 4 chiffres récent (ex: 2021, 2018).
+  ATTENTION : les étiquettes affichent souvent l'ANNÉE DE FONDATION du domaine (ex: "fondé en 1955", "depuis 1888", "est. 1743").
+  Cette année de fondation N'EST PAS le millésime. Le millésime = l'année de la récolte du raisin.
+  Si le seul chiffre visible est manifestement une année de fondation (avant 2000 pour un vin non millésimé courant) → vintage = null + nonVintage = true.
+  Pour les champagnes et crémants sans année de récolte explicite → vintage = null + nonVintage = true.
 - "grapes" = uniquement les cépages réels de l'appellation ou visibles sur l'étiquette. Ne pas inventer.
 - Tous les textes (description, accords, notes) doivent être rédigés en FRANÇAIS.
 
@@ -509,6 +513,19 @@ def validate_and_fix(data: dict, basename: str) -> dict:
     # village "N/A" → null
     if identity.get('village') in ('N/A', 'n/a', 'NA', '', 'None', 'none'):
         identity['village'] = None
+
+    # Vintage suspect : année de fondation confondue avec millésime
+    # Si vintage < 1950 ou si le type est champagne/crémant sans mention explicite de millésime
+    current_year = date.today().year
+    vintage = identity.get('vintage')
+    if vintage is not None:
+        if vintage < 1950:
+            log.warning(f"vintage={vintage} probablement une année de fondation → null + nonVintage=true")
+            identity['vintage'] = None
+            identity['nonVintage'] = True
+        elif vintage > current_year:
+            log.warning(f"vintage={vintage} dans le futur → null")
+            identity['vintage'] = None
 
     # bottleSize consistency
     bottle_size = identity.get('bottleSize') or purchase.get('bottleSize') or 75
