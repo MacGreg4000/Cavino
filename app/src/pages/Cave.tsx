@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Wine, Grid3x3, List, MapPin } from 'lucide-react';
+import { WinePhoto } from '../components/ui/WinePhoto';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -51,7 +52,7 @@ function WineListCard({ wine }: { wine: WineType }) {
     <Link to={`/cave/${wine.id}`}>
       <div className={`flex items-center gap-3 bg-surface rounded-[var(--radius-md)] p-3 border border-border border-l-4 ${typeLeftBorder(wine.type)} hover:bg-surface-hover transition-colors active:scale-[0.99]`}>
         {wine.photoUrl ? (
-          <img src={wine.photoUrl} alt="" className="w-16 h-16 rounded-[var(--radius-sm)] object-cover flex-shrink-0" />
+          <WinePhoto src={wine.photoUrl} className="w-16 h-16 rounded-[var(--radius-sm)] flex-shrink-0" />
         ) : (
           <div className="w-16 h-16 rounded-[var(--radius-sm)] bg-surface-hover flex items-center justify-center flex-shrink-0">
             <Wine size={20} className="text-text-muted" />

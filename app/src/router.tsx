@@ -7,6 +7,7 @@ import { Home } from './pages/Home';
 import { Cave } from './pages/Cave';
 import { WineDetail } from './pages/WineDetail';
 import { PendingWines } from './pages/PendingWines';
+import { AddWine } from './pages/AddWine';
 import { CellarView } from './pages/CellarView';
 import { CellarEditor } from './pages/CellarEditor';
 import { Advisor } from './pages/Advisor';
@@ -43,7 +44,7 @@ export const router = createBrowserRouter([
           { path: '/cave', element: <Cave /> },
           { path: '/cave/:id', element: <WineDetail /> },
           { path: '/pending', element: <PendingWines /> },
-          { path: '/add', element: <PendingWines /> },
+          { path: '/add', element: <AddWine /> },
           { path: '/cellar', element: <CellarView /> },
           { path: '/cellar/new', element: <CellarEditor /> },
           { path: '/cellar/:id', element: <CellarView /> },

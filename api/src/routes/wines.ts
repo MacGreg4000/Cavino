@@ -3,6 +3,9 @@ import { eq, ilike, and, ne, sql, desc } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { wines, gridSlots } from '../db/schema.js';
 import { z } from 'zod';
+import fs from 'fs/promises';
+import path from 'path';
+import crypto from 'crypto';
 
 const wineUpdateSchema = z.object({
   name: z.string().optional(),
@@ -52,6 +55,48 @@ export async function wineRoutes(app: FastifyInstance) {
       .orderBy(desc(wines.createdAt));
 
     return result;
+  });
+
+  // POST /api/wines — Création manuelle
+  app.post('/api/wines', async (req, reply) => {
+    const body = wineUpdateSchema.parse(req.body);
+
+    const insert: Record<string, unknown> = {
+      ...body,
+      importStatus: 'available',
+    };
+    if (body.purchasePrice !== undefined) insert.purchasePrice = body.purchasePrice.toString();
+    if ((body as Record<string, unknown>).bottleSize !== undefined) insert.bottleSize = String((body as Record<string, unknown>).bottleSize);
+
+    if (!insert.name) return reply.status(400).send({ error: 'Le nom est requis' });
+
+    const [created] = await db.insert(wines).values(insert as typeof wines.$inferInsert).returning();
+    return reply.status(201).send(created);
+  });
+
+  // POST /api/wines/:id/photo — Upload photo
+  app.post('/api/wines/:id/photo', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const file = await req.file();
+    if (!file) return reply.status(400).send({ error: 'No file uploaded' });
+
+    const photosPath = process.env.PHOTOS_PATH || '/photos';
+    const ext = path.extname(file.filename) || '.jpg';
+    const filename = `${crypto.randomUUID()}${ext}`;
+    const filepath = path.join(photosPath, filename);
+
+    await fs.mkdir(photosPath, { recursive: true });
+    const buffer = await file.toBuffer();
+    await fs.writeFile(filepath, buffer);
+
+    const photoUrl = `/photos/${filename}`;
+    const [updated] = await db.update(wines)
+      .set({ photoUrl, updatedAt: new Date() })
+      .where(eq(wines.id, id))
+      .returning();
+
+    if (!updated) return reply.status(404).send({ error: 'Wine not found' });
+    return updated;
   });
 
   // GET /api/wines/pending — Bouteilles en attente
