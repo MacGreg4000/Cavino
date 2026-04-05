@@ -210,11 +210,13 @@ def group_photos(files: list[Path]) -> list[list[Path]]:
         if matched:
             continue
 
-        # Priority 2: consecutive numbers
+        # Priority 2: consecutive numbers (preserve zero-padding: IMG_0272 → IMG_0273)
         m = re.match(r'^(.*?)(\d+)$', stem)
         if m:
-            prefix, num = m.group(1), int(m.group(2))
-            next_stem = f'{prefix}{num + 1}'
+            prefix, num_str = m.group(1), m.group(2)
+            num = int(num_str)
+            next_num = str(num + 1).zfill(len(num_str))  # conserve le padding
+            next_stem = f'{prefix}{next_num}'
             partner = next(
                 (x for x in files if x.stem == next_stem and x not in used), None
             )
@@ -465,11 +467,14 @@ def analyze_with_ollama(jpeg_paths: list[Path]) -> Optional[dict]:
         log.error("Aucune image valide à envoyer à Ollama")
         return None
 
+    # /no_think désactive le mode thinking de qwen3 (fallback si think:False non supporté)
+    no_think_prefix = "/no_think\n" if 'qwen3' in OLLAMA_MODEL.lower() else ""
+
     payload = {
         "model": OLLAMA_MODEL,
         "messages": [{
             "role": "user",
-            "content": prompt,
+            "content": no_think_prefix + prompt,
             "images": images_b64,
         }],
         "options": {"temperature": 0.1, "num_ctx": 16384, "num_predict": 4096, "think": False},
@@ -490,13 +495,16 @@ def analyze_with_ollama(jpeg_paths: list[Path]) -> Optional[dict]:
     message = resp_json.get('message', {})
     raw = message.get('content', '') or ''
 
-    # qwen3 thinking mode : contenu peut être dans reasoning_content si content est vide
+    # qwen3 thinking mode : contenu peut être dans reasoning_content ou thinking si content vide
     if not raw.strip():
-        raw = message.get('reasoning_content', '') or ''
-        if raw.strip():
-            log.debug("Contenu trouvé dans reasoning_content (mode thinking qwen3)")
-        else:
-            log.error(f"Réponse Ollama vide — structure complète: {list(resp_json.keys())}")
+        for fallback_key in ('reasoning_content', 'thinking'):
+            candidate = message.get(fallback_key, '') or ''
+            if candidate.strip():
+                raw = candidate
+                log.debug(f"Contenu trouvé dans message.{fallback_key} (mode thinking qwen3)")
+                break
+        if not raw.strip():
+            log.error(f"Réponse Ollama vide — structure: {list(resp_json.keys())}")
             log.error(f"Message keys: {list(message.keys())}")
             return None
 
