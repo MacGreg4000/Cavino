@@ -1,21 +1,48 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Settings as SettingsIcon, MapPin, Plus, Wine } from 'lucide-react';
+import { Settings as SettingsIcon, MapPin, Plus, Wine, FileDown, Loader2 } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { useLocationStore } from '../stores/location';
 import { useWineStore } from '../stores/wine';
+import { apiFetch } from '../lib/api';
+import { useToast } from '../components/ui/Toast';
 
 export function Settings() {
   const { locations, fetchLocations } = useLocationStore();
   const wines = useWineStore((s) => s.wines);
   const pendingCount = useWineStore((s) => s.pendingCount);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     fetchLocations();
   }, [fetchLocations]);
+
+  const handleDownloadPdf = async () => {
+    setPdfLoading(true);
+    try {
+      const resp = await apiFetch('/api/pdf/wine-list');
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: 'Erreur inconnue' }));
+        toast('error', err.error || 'Impossible de générer le PDF');
+        return;
+      }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'carte-des-vins.pdf';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast('error', 'Erreur lors de la génération du PDF');
+    } finally {
+      setPdfLoading(false);
+    }
+  };
 
   return (
     <div>
@@ -69,6 +96,28 @@ export function Settings() {
               <span className="font-mono">{locations.length}</span>
             </div>
           </div>
+        </Card>
+
+        {/* PDF export */}
+        <Card>
+          <div className="flex items-center gap-2 mb-3">
+            <FileDown size={16} className="text-accent" />
+            <h3 className="text-sm font-semibold">Exporter</h3>
+          </div>
+          <p className="text-xs text-text-muted mb-3">
+            Génère la carte des vins en PDF — mise en page luxe avec photo et description pour chaque bouteille.
+          </p>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleDownloadPdf}
+            disabled={pdfLoading}
+          >
+            {pdfLoading
+              ? <><Loader2 size={14} className="animate-spin" /> Génération…</>
+              : <><FileDown size={14} /> Télécharger la carte des vins</>
+            }
+          </Button>
         </Card>
 
         {/* About */}
