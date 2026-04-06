@@ -1,8 +1,10 @@
 import { Outlet } from 'react-router-dom';
 import { BottomNav } from './BottomNav';
 import { useWineStore } from '../../stores/wine';
+import { useWebSocket } from '../../hooks/useWebSocket';
 
 export function AppLayout() {
+  useWebSocket();
   const pendingCount = useWineStore((s) => s.pendingCount);
 
   return (
