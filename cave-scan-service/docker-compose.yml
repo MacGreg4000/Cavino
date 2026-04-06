@@ -6,8 +6,8 @@ services:
     container_name: cave-scan
     restart: unless-stopped
     environment:
-      OLLAMA_URL:    "http://macciolupo.tplinkdns.com:11434"
-      SEARXNG_URL:   "http://macciolupo.tplinkdns.com:8888"
+      OLLAMA_URL:    "http://100.86.15.25:11434"
+      SEARXNG_URL:   "http://100.86.15.25:8888"
       OLLAMA_MODEL:  "qwen3-vl:8b"
       CAVE_BASE_DIR: "/data/cave"
       SETTLE_DELAY:  "3.0"
