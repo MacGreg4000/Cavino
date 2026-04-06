@@ -307,6 +307,52 @@ def image_to_base64(path: Path) -> str:
     with open(path, 'rb') as f:
         return base64.b64encode(f.read()).decode('utf-8')
 
+
+def merge_images_side_by_side(paths: list[Path], max_height: int = 1600) -> Path:
+    """Fusionne plusieurs images côte à côte en un seul JPEG temporaire.
+
+    Utile pour contourner les bugs des modèles de vision qui échouent avec
+    plusieurs images en entrée (ex: qwen3-vl:8b mode thinking avec 2 images).
+    Retourne le chemin du fichier temporaire créé dans /tmp.
+    """
+    images = []
+    for p in paths:
+        try:
+            img = Image.open(p).convert('RGB')
+            images.append(img)
+        except Exception as e:
+            log.warning(f"Impossible d'ouvrir {p.name} pour la fusion: {e}")
+
+    if not images:
+        raise ValueError("Aucune image valide pour la fusion")
+
+    # Redimensionner toutes les images à la même hauteur (max_height)
+    resized = []
+    for img in images:
+        w, h = img.size
+        if h > max_height:
+            ratio = max_height / h
+            img = img.resize((int(w * ratio), max_height), Image.LANCZOS)
+        resized.append(img)
+
+    # Calculer les dimensions de l'image fusionnée
+    total_width = sum(img.width for img in resized)
+    max_h = max(img.height for img in resized)
+
+    merged = Image.new('RGB', (total_width, max_h), (20, 20, 20))
+    x_offset = 0
+    for img in resized:
+        # Centrer verticalement si hauteurs différentes
+        y_offset = (max_h - img.height) // 2
+        merged.paste(img, (x_offset, y_offset))
+        x_offset += img.width
+
+    out_path = Path('/tmp') / f"merged_{paths[0].stem}.jpg"
+    merged.save(out_path, 'JPEG', quality=90)
+    log.info(f"Images fusionnées → {out_path.name} ({total_width}×{max_h}px)")
+    return out_path
+
+
 # ─── Ollama prompt ────────────────────────────────────────────────────────────────
 
 SYSTEM_PROMPT = """{knowledge}
@@ -456,8 +502,21 @@ def analyze_with_ollama(jpeg_paths: list[Path]) -> Optional[dict]:
         photo_context=photo_context,
     )
 
+    # Fusionner les images côte à côte si plusieurs (contourne le bug qwen3-vl:8b
+    # qui n'arrive pas à produire du JSON valide quand plusieurs images sont envoyées)
+    merged_tmp: Optional[Path] = None
+    if len(jpeg_paths) > 1:
+        try:
+            merged_tmp = merge_images_side_by_side(jpeg_paths)
+            send_paths = [merged_tmp]
+        except Exception as e:
+            log.warning(f"Fusion impossible ({e}), envoi séparé")
+            send_paths = jpeg_paths
+    else:
+        send_paths = jpeg_paths
+
     images_b64: list[str] = []
-    for p in jpeg_paths:
+    for p in send_paths:
         try:
             images_b64.append(image_to_base64(p))
         except Exception as e:
@@ -492,69 +551,78 @@ def analyze_with_ollama(jpeg_paths: list[Path]) -> Optional[dict]:
     }
 
     try:
-        resp = requests.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=300)
-        resp.raise_for_status()
-    except requests.Timeout:
-        log.error("Ollama timeout (300s) — originaux préservés")
-        return None
-    except requests.RequestException as e:
-        log.error(f"Erreur réseau Ollama: {e} — originaux préservés")
-        return None
-
-    resp_json = resp.json()
-    message = resp_json.get('message', {})
-    raw = message.get('content', '') or ''
-
-    # qwen3 thinking mode : contenu peut être dans reasoning_content ou thinking si content vide
-    if not raw.strip():
-        for fallback_key in ('reasoning_content', 'thinking'):
-            candidate = message.get(fallback_key, '') or ''
-            if candidate.strip():
-                raw = candidate
-                log.debug(f"Contenu trouvé dans message.{fallback_key} (mode thinking qwen3)")
-                break
-        if not raw.strip():
-            log.error(f"Réponse Ollama vide — structure: {list(resp_json.keys())}")
-            log.error(f"Message keys: {list(message.keys())}")
+        try:
+            resp = requests.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=300)
+            resp.raise_for_status()
+        except requests.Timeout:
+            log.error("Ollama timeout (300s) — originaux préservés")
+            return None
+        except requests.RequestException as e:
+            log.error(f"Erreur réseau Ollama: {e} — originaux préservés")
             return None
 
-    # Strip qwen3 <think>...</think> reasoning blocks (present even when think:False)
-    raw_no_think = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL).strip()
-    if raw_no_think:
-        raw = raw_no_think
-        log.debug("Blocs <think> supprimés du contenu Ollama")
-    else:
-        # Content was ONLY thinking — try to find JSON inside the think block itself
-        think_content = re.search(r'<think>(.*?)</think>', raw, re.DOTALL)
-        if think_content:
-            inner = think_content.group(1).strip()
-            m = re.search(r'\{.*\}', inner, re.DOTALL)
-            if m:
-                log.warning("JSON trouvé à l'intérieur d'un bloc <think> — extraction forcée")
-                try:
-                    return json.loads(m.group(0))
-                except json.JSONDecodeError:
-                    pass
-        log.error("Réponse Ollama ne contient que du contenu <think> sans JSON exploitable")
-        log.error(f"Réponse brute (500 chars): {raw[:500]}")
-        return None
+        resp_json = resp.json()
+        message = resp_json.get('message', {})
+        raw = message.get('content', '') or ''
 
-    # Strip markdown code blocks if present
-    cleaned = re.sub(r'^```(?:json)?\s*', '', raw.strip(), flags=re.MULTILINE)
-    cleaned = re.sub(r'```\s*$', '', cleaned.strip(), flags=re.MULTILINE)
-    cleaned = cleaned.strip()
+        # qwen3 thinking mode : contenu peut être dans reasoning_content ou thinking si content vide
+        if not raw.strip():
+            for fallback_key in ('reasoning_content', 'thinking'):
+                candidate = message.get(fallback_key, '') or ''
+                if candidate.strip():
+                    raw = candidate
+                    log.debug(f"Contenu trouvé dans message.{fallback_key} (mode thinking qwen3)")
+                    break
+            if not raw.strip():
+                log.error(f"Réponse Ollama vide — structure: {list(resp_json.keys())}")
+                log.error(f"Message keys: {list(message.keys())}")
+                return None
 
-    # Find JSON object in response
-    m = re.search(r'\{.*\}', cleaned, re.DOTALL)
-    if m:
-        cleaned = m.group(0)
+        # Strip qwen3 <think>...</think> reasoning blocks (present even when think:False)
+        raw_no_think = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL).strip()
+        if raw_no_think:
+            raw = raw_no_think
+            log.debug("Blocs <think> supprimés du contenu Ollama")
+        else:
+            # Content was ONLY thinking — try to find JSON inside the think block itself
+            think_content = re.search(r'<think>(.*?)</think>', raw, re.DOTALL)
+            if think_content:
+                inner = think_content.group(1).strip()
+                m = re.search(r'\{.*\}', inner, re.DOTALL)
+                if m:
+                    log.warning("JSON trouvé à l'intérieur d'un bloc <think> — extraction forcée")
+                    try:
+                        return json.loads(m.group(0))
+                    except json.JSONDecodeError:
+                        pass
+            log.error("Réponse Ollama ne contient que du contenu <think> sans JSON exploitable")
+            log.error(f"Réponse brute (500 chars): {raw[:500]}")
+            return None
 
-    try:
-        return json.loads(cleaned)
-    except json.JSONDecodeError as e:
-        log.error(f"JSON invalide retourné par Ollama: {e}")
-        log.error(f"Réponse brute (500 chars): {raw[:500]}")
-        return None
+        # Strip markdown code blocks if present
+        cleaned = re.sub(r'^```(?:json)?\s*', '', raw.strip(), flags=re.MULTILINE)
+        cleaned = re.sub(r'```\s*$', '', cleaned.strip(), flags=re.MULTILINE)
+        cleaned = cleaned.strip()
+
+        # Find JSON object in response
+        m = re.search(r'\{.*\}', cleaned, re.DOTALL)
+        if m:
+            cleaned = m.group(0)
+
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError as e:
+            log.error(f"JSON invalide retourné par Ollama: {e}")
+            log.error(f"Réponse brute (500 chars): {raw[:500]}")
+            return None
+
+    finally:
+        # Supprimer le fichier temporaire de fusion s'il existe
+        if merged_tmp and merged_tmp.exists():
+            try:
+                merged_tmp.unlink()
+            except Exception:
+                pass
 
 # ─── JSON Validation & Auto-correction ───────────────────────────────────────────
 
