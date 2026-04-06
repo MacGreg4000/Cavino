@@ -507,7 +507,7 @@ def analyze_with_ollama(jpeg_paths: list[Path]) -> Optional[dict]:
     merged_tmp: Optional[Path] = None
     if len(jpeg_paths) > 1:
         try:
-            merged_tmp = merge_images_side_by_side(jpeg_paths)
+            merged_tmp = merge_images_side_by_side(jpeg_paths, max_height=900)
             send_paths = [merged_tmp]
         except Exception as e:
             log.warning(f"Fusion impossible ({e}), envoi séparé")
@@ -530,7 +530,6 @@ def analyze_with_ollama(jpeg_paths: list[Path]) -> Optional[dict]:
         {
             "role": "system",
             "content": (
-                "/no_think\n"
                 "You are a JSON-only output assistant. "
                 "NEVER output reasoning, thinking, explanations, or any text before or after the JSON. "
                 "Your response MUST start with '{' and end with '}'. Nothing else."
@@ -538,7 +537,8 @@ def analyze_with_ollama(jpeg_paths: list[Path]) -> Optional[dict]:
         },
         {
             "role": "user",
-            "content": prompt,
+            # /no_think en tête du message user = méthode officielle qwen3 pour désactiver le thinking
+            "content": "/no_think\n" + prompt,
             "images": images_b64,
         },
     ]
