@@ -492,10 +492,10 @@ def analyze_with_ollama(jpeg_paths: list[Path]) -> Optional[dict]:
     }
 
     try:
-        resp = requests.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=120)
+        resp = requests.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=300)
         resp.raise_for_status()
     except requests.Timeout:
-        log.error("Ollama timeout (120s) — originaux préservés")
+        log.error("Ollama timeout (300s) — originaux préservés")
         return None
     except requests.RequestException as e:
         log.error(f"Erreur réseau Ollama: {e} — originaux préservés")

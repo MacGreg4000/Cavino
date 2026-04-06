@@ -159,12 +159,18 @@ export function ScanWine() {
     setScanResult(null);
   }, [setScanResult]);
 
-  // Elapsed timer while analyzing
+  // Elapsed timer + timeout while analyzing
   useEffect(() => {
     if (scanState !== 'analyzing') return;
     startTimeRef.current = Date.now();
     const interval = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
+      const secs = Math.floor((Date.now() - startTimeRef.current) / 1000);
+      setElapsed(secs);
+      // Timeout après 5 minutes — forcer l'état erreur
+      if (secs >= 320) {
+        setScanResult({ status: 'error', message: 'Délai dépassé — Ollama n\'a pas répondu à temps. Réessaie.' });
+        setScanState('done');
+      }
     }, 1000);
     return () => clearInterval(interval);
   }, [scanState]);
