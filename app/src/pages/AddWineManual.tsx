@@ -239,6 +239,7 @@ export function AddWineManual() {
           </label>
           <SlotPicker
             selectedSlots={selectedSlots}
+            selectedLocationId={locationId}
             onSelect={(slots, locId) => { setSelectedSlots(slots); setLocationId(locId); }}
             maxSlots={quantity}
           />

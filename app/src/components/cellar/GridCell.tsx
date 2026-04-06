@@ -6,6 +6,8 @@ interface GridCellProps {
   label: string;
   onClick?: (slot: GridSlot) => void;
   highlight?: boolean;
+  highlightPrimary?: boolean;
+  highlightSecondary?: boolean;
 }
 
 const wineTypeColor: Record<string, string> = {
@@ -26,7 +28,7 @@ const wineTypeBg: Record<string, string> = {
   effervescent: 'bg-champagne/10',
 };
 
-export function GridCell({ slot, label, onClick, highlight }: GridCellProps) {
+export function GridCell({ slot, label, onClick, highlight, highlightPrimary, highlightSecondary }: GridCellProps) {
   const isBlocked = slot.slot.isBlocked;
   const isOccupied = !!slot.wine;
   const isEmpty = !isBlocked && !isOccupied;
@@ -50,6 +52,8 @@ export function GridCell({ slot, label, onClick, highlight }: GridCellProps) {
             : 'bg-surface-hover/50 border-border-subtle hover:border-border hover:bg-surface-hover active:scale-95'
         }
         ${highlight ? 'animate-pulse-gold ring-1 ring-gold/50' : ''}
+        ${highlightPrimary ? 'ring-2 ring-gold' : ''}
+        ${highlightSecondary ? 'ring-2 ring-accent' : ''}
       `}
     >
       {isOccupied && slot.wine?.photoUrl ? (

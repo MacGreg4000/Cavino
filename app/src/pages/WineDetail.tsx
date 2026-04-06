@@ -606,6 +606,7 @@ export function WineDetail() {
         <div className="space-y-4">
           <SlotPicker
             selectedSlots={selectedSlots}
+            selectedLocationId={selectedLocationId}
             onSelect={(slots, locId) => { setSelectedSlots(slots); setSelectedLocationId(locId); }}
             maxSlots={wine.quantity || 1}
           />

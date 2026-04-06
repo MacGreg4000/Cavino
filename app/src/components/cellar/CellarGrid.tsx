@@ -8,10 +8,12 @@ interface CellarGridProps {
   slots: GridSlot[];
   onSlotClick?: (slot: GridSlot) => void;
   highlightSlots?: string[];
+  highlightPrimaryIds?: string[];
+  highlightSecondaryIds?: string[];
   compact?: boolean;
 }
 
-export function CellarGrid({ location, slots, onSlotClick, highlightSlots = [], compact = false }: CellarGridProps) {
+export function CellarGrid({ location, slots, onSlotClick, highlightSlots = [], highlightPrimaryIds = [], highlightSecondaryIds = [], compact = false }: CellarGridProps) {
   const config = location.gridConfig;
   if (!config) return null;
 
@@ -66,6 +68,8 @@ export function CellarGrid({ location, slots, onSlotClick, highlightSlots = [], 
                   label={label}
                   onClick={onSlotClick}
                   highlight={highlightSlots.includes(slot.slot.id)}
+                  highlightPrimary={highlightPrimaryIds.includes(slot.slot.id)}
+                  highlightSecondary={highlightSecondaryIds.includes(slot.slot.id)}
                 />
               );
             })}
