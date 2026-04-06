@@ -6,6 +6,7 @@ export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const addPendingFromWs = useWineStore((s) => s.addPendingFromWs);
+  const setScanResult = useWineStore((s) => s.setScanResult);
   const { toast } = useToast();
   const attemptsRef = useRef(0);
 
@@ -24,15 +25,15 @@ export function useWebSocket() {
           const data = JSON.parse(event.data);
           if (data.type === 'WINE_PENDING') {
             addPendingFromWs(data.wine);
-            toast('info', `Nouvelle bouteille : ${data.wine.name}`);
+            // setScanResult is called inside addPendingFromWs via store
           } else if (data.type === 'IMPORT_ERROR') {
-            toast('error', `Erreur import : ${data.error}`);
+            setScanResult({ status: 'error', message: data.error || 'Erreur inconnue' });
+            toast('error', `Erreur d'analyse : ${data.error}`);
           }
         } catch {}
       };
 
       ws.onclose = () => {
-        // Reconnect with exponential backoff
         const delay = Math.min(1000 * Math.pow(2, attemptsRef.current), 30000);
         attemptsRef.current++;
         reconnectTimeoutRef.current = setTimeout(connect, delay);
@@ -45,5 +46,5 @@ export function useWebSocket() {
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
       wsRef.current?.close();
     };
-  }, [addPendingFromWs, toast]);
+  }, [addPendingFromWs, setScanResult, toast]);
 }
