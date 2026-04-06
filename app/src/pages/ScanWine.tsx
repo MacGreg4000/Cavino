@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Camera, X, RotateCcw, Sparkles, ImagePlus, AlertCircle, Images, CheckCircle, Clock, ChevronRight, RefreshCw } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button } from '../components/ui/Button';
@@ -143,7 +143,6 @@ function StatusStep({
 // ─── ScanWine ─────────────────────────────────────────────────────────────────
 
 export function ScanWine() {
-  const navigate = useNavigate();
   const { toast } = useToast();
 
   const lastScanResult = useWineStore((s) => s.lastScanResult);
