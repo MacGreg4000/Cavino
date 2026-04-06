@@ -13,6 +13,7 @@ import { tastingRoutes } from './routes/tasting.js';
 import { advisorRoutes } from './routes/advisor.js';
 import { publicRoutes } from './routes/public.js';
 import { importRoutes } from './routes/import.js';
+import { scanRoutes } from './routes/scan.js';
 import { startWatcher } from './watcher.js';
 import { addClient } from './websocket.js';
 
@@ -25,7 +26,7 @@ async function main() {
   // Plugins
   await app.register(cors, { origin: true });
   await app.register(fastifyWebsocket);
-  await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } });
+  await app.register(multipart, { limits: { fileSize: 30 * 1024 * 1024 } });
   await app.register(authPlugin);
 
   // Servir les photos
@@ -59,6 +60,7 @@ async function main() {
     await scoped.register(tastingRoutes);
     await scoped.register(advisorRoutes);
     await scoped.register(importRoutes);
+    await scoped.register(scanRoutes);
   });
 
   // DB connection check au démarrage

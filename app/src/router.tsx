@@ -8,6 +8,9 @@ import { Cave } from './pages/Cave';
 import { WineDetail } from './pages/WineDetail';
 import { PendingWines } from './pages/PendingWines';
 import { AddWine } from './pages/AddWine';
+import { AddWineManual } from './pages/AddWineManual';
+import { AddWineInbox } from './pages/AddWineInbox';
+import { ScanWine } from './pages/ScanWine';
 import { CellarView } from './pages/CellarView';
 import { CellarEditor } from './pages/CellarEditor';
 import { Advisor } from './pages/Advisor';
@@ -45,6 +48,9 @@ export const router = createBrowserRouter([
           { path: '/cave/:id', element: <WineDetail /> },
           { path: '/pending', element: <PendingWines /> },
           { path: '/add', element: <AddWine /> },
+          { path: '/add/manual', element: <AddWineManual /> },
+          { path: '/add/inbox', element: <AddWineInbox /> },
+          { path: '/scan', element: <ScanWine /> },
           { path: '/cellar', element: <CellarView /> },
           { path: '/cellar/new', element: <CellarEditor /> },
           { path: '/cellar/:id', element: <CellarView /> },
