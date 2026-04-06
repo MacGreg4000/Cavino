@@ -19,7 +19,13 @@ export function startWatcher() {
   const usePolling = process.env.CHOKIDAR_USEPOLLING !== 'false';
   const pollInterval = parseInt(process.env.CHOKIDAR_INTERVAL_MS || '5000', 10);
 
-  const watcher = chokidar.watch(path.join(INBOX_PATH, '*.json'), {
+  const scanReadyDir = path.join(INBOX_PATH, 'Prêt à être importé');
+  fs.mkdir(scanReadyDir, { recursive: true }).catch(() => {});
+
+  const watcher = chokidar.watch([
+    path.join(INBOX_PATH, '*.json'),
+    path.join(scanReadyDir, '*.json'),
+  ], {
     persistent: true,
     ignoreInitial: false,
     usePolling,

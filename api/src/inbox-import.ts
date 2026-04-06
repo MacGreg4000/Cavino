@@ -57,11 +57,19 @@ export async function processInboxJsonFile(jsonPath: string): Promise<ProcessInb
 
   try {
     const baseName = path.basename(base, path.extname(base));
-    let photoPath = await findPhotoInInbox(INBOX_PATH, baseName);
+    const jsonDir = path.dirname(jsonPath);
 
+    // Chercher la photo dans le même dossier que le JSON, puis à la racine inbox
+    let photoPath = await findPhotoInInbox(jsonDir, baseName);
+    if (!photoPath && jsonDir !== INBOX_PATH) {
+      photoPath = await findPhotoInInbox(INBOX_PATH, baseName);
+    }
     if (!photoPath) {
       await new Promise((r) => setTimeout(r, 2000));
-      photoPath = await findPhotoInInbox(INBOX_PATH, baseName);
+      photoPath = await findPhotoInInbox(jsonDir, baseName);
+      if (!photoPath && jsonDir !== INBOX_PATH) {
+        photoPath = await findPhotoInInbox(INBOX_PATH, baseName);
+      }
     }
 
     const result = await importWinePair({ jsonPath, photoPath });
@@ -96,8 +104,17 @@ export async function scanInboxFolder(): Promise<{
   errors: string[];
   message?: string;
 }> {
-  const entries = await fs.readdir(INBOX_PATH).catch(() => [] as string[]);
-  const jsonFiles = entries.filter(isImportableJson);
+  const scanReadyDir = path.join(INBOX_PATH, 'Prêt à être importé');
+
+  const [rootEntries, subEntries] = await Promise.all([
+    fs.readdir(INBOX_PATH).catch(() => [] as string[]),
+    fs.readdir(scanReadyDir).catch(() => [] as string[]),
+  ]);
+
+  const jsonFiles = [
+    ...rootEntries.filter(isImportableJson).map((f) => path.join(INBOX_PATH, f)),
+    ...subEntries.filter(isImportableJson).map((f) => path.join(scanReadyDir, f)),
+  ];
 
   if (jsonFiles.length === 0) {
     return { imported: 0, errors: [], message: 'Aucun fichier JSON dans le dossier inbox' };
@@ -106,9 +123,8 @@ export async function scanInboxFolder(): Promise<{
   let imported = 0;
   const errors: string[] = [];
 
-  for (const jsonFile of jsonFiles) {
-    const jsonPath = path.join(INBOX_PATH, jsonFile);
-    const baseName = path.basename(jsonFile, path.extname(jsonFile));
+  for (const jsonPath of jsonFiles) {
+    const baseName = path.basename(jsonPath, path.extname(jsonPath));
     const r = await processInboxJsonFile(jsonPath);
     if (r === 'imported') imported++;
     else if (r === 'error') errors.push(`${baseName}: import impossible (voir data/errors)`);
