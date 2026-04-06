@@ -19,6 +19,7 @@ const wineUpdateSchema = z.object({
   purchasePrice: z.number().optional(),
   personalRating: z.number().int().min(0).max(100).optional(),
   tastingNotes: z.string().optional(),
+  personalComment: z.string().max(10000).optional().nullable(),
   isFavorite: z.boolean().optional(),
   importStatus: z.enum(['pending', 'available', 'consumed']).optional(),
 }).passthrough();

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Wine, Clock, TrendingUp, AlertCircle, Settings, Sparkles, History, GlassWater, Plus, CheckCircle } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
+import { WinePhoto } from '../components/ui/WinePhoto';
 import { useWineStore, type Wine as WineType } from '../stores/wine';
 
 interface TimelineEvent {
@@ -143,9 +144,9 @@ export function Home() {
               <Link key={wine.id} to={`/cave/${wine.id}`}>
                 <div className="flex items-center gap-3 bg-surface rounded-[var(--radius-md)] p-3 border border-border border-l-4 border-l-warning/70 hover:bg-surface-hover transition-colors">
                   {wine.photoUrl ? (
-                    <img src={wine.photoUrl} alt="" className="w-12 h-12 rounded-[var(--radius-sm)] object-cover" />
+                    <WinePhoto src={wine.photoUrl} alt="" className="w-12 h-12 rounded-[var(--radius-sm)] flex-shrink-0" />
                   ) : (
-                    <div className="w-12 h-12 rounded-[var(--radius-sm)] bg-surface-hover flex items-center justify-center">
+                    <div className="w-12 h-12 rounded-[var(--radius-sm)] bg-surface-hover flex items-center justify-center flex-shrink-0">
                       <Wine size={16} className="text-text-muted" />
                     </div>
                   )}
@@ -193,7 +194,7 @@ export function Home() {
                     {/* Content */}
                     <div className="flex items-center gap-3 flex-1 bg-surface rounded-[var(--radius-md)] p-2.5 border border-border">
                       {event.wine.photoUrl ? (
-                        <img src={event.wine.photoUrl} alt="" className="w-9 h-9 rounded-[var(--radius-sm)] object-cover flex-shrink-0" />
+                        <WinePhoto src={event.wine.photoUrl} alt="" className="w-9 h-9 rounded-[var(--radius-sm)] flex-shrink-0" />
                       ) : (
                         <div className="w-9 h-9 rounded-[var(--radius-sm)] bg-surface-hover flex items-center justify-center flex-shrink-0">
                           <Wine size={14} className="text-text-muted" />

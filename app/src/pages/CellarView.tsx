@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { MapPin, Plus, Settings } from 'lucide-react';
+import { MapPin, Plus, Settings, ArrowRightLeft } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -127,6 +127,19 @@ function LocationGrid({ locationId }: { locationId: string }) {
             >
               Voir la fiche
             </Button>
+            <Button
+              variant="secondary"
+              className="w-full"
+              onClick={() => {
+                navigate(`/cave/${selectedSlot.wine!.id}`, { state: { openSlotPicker: true } });
+                setSelectedSlot(null);
+              }}
+            >
+              <ArrowRightLeft size={16} /> Déplacer ailleurs
+            </Button>
+            <p className="text-[11px] text-text-muted text-center leading-relaxed">
+              « Déplacer ailleurs » ouvre tout de suite le choix de cave et de cases sur la fiche.
+            </p>
           </div>
         )}
       </BottomSheet>

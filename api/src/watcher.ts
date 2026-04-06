@@ -1,94 +1,84 @@
 import chokidar from 'chokidar';
 import path from 'path';
 import fs from 'fs/promises';
-import { importWinePair } from './importer.js';
-import { broadcast } from './websocket.js';
+import { INBOX_PATH, processInboxJsonFile, scanInboxFolder } from './inbox-import.js';
 
-const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.heic', '.webp'];
-
-const INBOX = process.env.INBOX_PATH || '/inbox';
-const PROCESSED = process.env.PROCESSED_PATH || '/processed';
-const ERRORS = process.env.ERRORS_PATH || '/errors';
-
-async function moveFile(src: string, destDir: string) {
-  const filename = path.basename(src);
-  const dest = path.join(destDir, filename);
-  await fs.rename(src, dest).catch(async () => {
-    // rename fails across filesystems, fallback to copy+delete
-    await fs.copyFile(src, dest);
-    await fs.unlink(src);
-  });
+function isJsonPath(filePath: string): boolean {
+  const b = path.basename(filePath);
+  if (b.startsWith('._')) return false;
+  return b.toLowerCase().endsWith('.json');
 }
 
 export function startWatcher() {
-  // Ensure directories exist
   Promise.all([
-    fs.mkdir(INBOX, { recursive: true }),
-    fs.mkdir(PROCESSED, { recursive: true }),
-    fs.mkdir(ERRORS, { recursive: true }),
+    fs.mkdir(INBOX_PATH, { recursive: true }),
+    fs.mkdir(process.env.PROCESSED_PATH || '/processed', { recursive: true }),
+    fs.mkdir(process.env.ERRORS_PATH || '/errors', { recursive: true }),
   ]).catch(() => {});
 
   const usePolling = process.env.CHOKIDAR_USEPOLLING !== 'false';
-  const watcher = chokidar.watch(path.join(INBOX, '*.json'), {
+  const pollInterval = parseInt(process.env.CHOKIDAR_INTERVAL_MS || '5000', 10);
+
+  const watcher = chokidar.watch(path.join(INBOX_PATH, '*.json'), {
     persistent: true,
     ignoreInitial: false,
     usePolling,
-    interval: 5000,
+    interval: pollInterval,
     awaitWriteFinish: {
       stabilityThreshold: 2000,
       pollInterval: 500,
     },
   });
 
-  watcher.on('add', async (jsonPath) => {
-    const baseName = path.basename(jsonPath, '.json');
-    console.log(`📥 JSON détecté: ${baseName}`);
+  const debouncers = new Map<string, ReturnType<typeof setTimeout>>();
 
-    // Chercher la photo avec le même nom de base
-    let photoPath: string | null = null;
-    for (const ext of IMAGE_EXTENSIONS) {
-      const candidate = path.join(INBOX, baseName + ext);
-      try {
-        await fs.access(candidate);
-        photoPath = candidate;
-        break;
-      } catch {}
-    }
-
-    if (!photoPath) {
-      // Attendre 2s au cas où la photo arrive juste après
-      await new Promise((r) => setTimeout(r, 2000));
-      for (const ext of IMAGE_EXTENSIONS) {
-        const candidate = path.join(INBOX, baseName + ext);
-        try {
-          await fs.access(candidate);
-          photoPath = candidate;
-          break;
-        } catch {}
-      }
-    }
-
-    console.log(
-      photoPath
-        ? `📸 Photo associée: ${path.basename(photoPath)}`
-        : `⚠️  Aucune photo trouvée pour ${baseName} — import sans photo`
+  const scheduleProcess = (jsonPath: string, delayMs: number) => {
+    if (!isJsonPath(jsonPath)) return;
+    const prev = debouncers.get(jsonPath);
+    if (prev) clearTimeout(prev);
+    debouncers.set(
+      jsonPath,
+      setTimeout(() => {
+        debouncers.delete(jsonPath);
+        processInboxJsonFile(jsonPath).catch((e) => console.error('Watcher process error:', e));
+      }, delayMs)
     );
+  };
 
-    const result = await importWinePair({ jsonPath, photoPath });
-
-    if (result.success) {
-      await moveFile(jsonPath, PROCESSED);
-      if (photoPath) await moveFile(photoPath, PROCESSED);
-      broadcast({ type: 'WINE_PENDING', wine: result.wine });
-      console.log(`✅ Importé: ${result.wine.name}`);
-    } else {
-      await moveFile(jsonPath, ERRORS);
-      if (photoPath) await moveFile(photoPath, ERRORS);
-      broadcast({ type: 'IMPORT_ERROR', error: result.error, file: baseName });
-      console.error(`❌ Erreur: ${result.error}`);
-    }
+  watcher.on('add', (jsonPath) => {
+    console.log(`📥 JSON add: ${path.basename(jsonPath)}`);
+    scheduleProcess(jsonPath, 400);
   });
 
-  console.log(`👀 Watcher actif sur ${INBOX}`);
+  watcher.on('change', (jsonPath) => {
+    console.log(`📥 JSON change: ${path.basename(jsonPath)}`);
+    scheduleProcess(jsonPath, 2500);
+  });
+
+  console.log(`👀 Watcher actif sur ${INBOX_PATH} (polling=${usePolling}, interval=${pollInterval}ms)`);
+
+  // Fichiers déjà présents + montages NAS : rescan périodique de secours
+  const periodicMs = parseInt(process.env.INBOX_PERIODIC_SCAN_MS || '60000', 10);
+  if (periodicMs > 0) {
+    setInterval(() => {
+      scanInboxFolder()
+        .then((r) => {
+          if (r.imported > 0) console.log(`📂 Scan périodique: ${r.imported} import(s)`);
+        })
+        .catch((e) => console.error('Periodic inbox scan:', e));
+    }, periodicMs);
+  }
+
+  // Premier passage après démarrage (laisse le temps au volume d’être prêt)
+  setTimeout(() => {
+    scanInboxFolder()
+      .then((r) => {
+        if (r.imported > 0 || r.errors.length > 0) {
+          console.log(`📂 Scan démarrage: ${r.imported} OK, ${r.errors.length} erreur(s)`);
+        }
+      })
+      .catch((e) => console.error('Initial inbox scan:', e));
+  }, 8000);
+
   return watcher;
 }

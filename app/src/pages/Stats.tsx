@@ -91,7 +91,7 @@ export function Stats() {
           </Card>
           <Card className="text-center">
             <p className="text-2xl font-display font-bold text-gold">
-              {stats.totalValue > 0 ? `${stats.totalValue}€` : '—'}
+              {stats.totalValue > 0 ? `${Math.round(stats.totalValue)}€` : '—'}
             </p>
             <p className="text-[10px] text-text-secondary mt-0.5">Valeur</p>
           </Card>

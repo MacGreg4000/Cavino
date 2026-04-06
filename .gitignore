@@ -32,3 +32,14 @@ drizzle/meta/
 # Logs
 *.log
 npm-debug.log*
+
+# Import pipeline (bind mounts Docker / NAS — pas versionner le contenu)
+data/inbox/**
+!data/inbox/.gitkeep
+data/processed/**
+!data/processed/.gitkeep
+data/errors/**
+!data/errors/.gitkeep
+
+# Synology DSM
+**/@eaDir/

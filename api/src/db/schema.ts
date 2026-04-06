@@ -92,6 +92,8 @@ export const wines = pgTable('wines', {
   awards: jsonb('awards').$type<Array<{ year: number; name: string; medal?: string }>>(),
   personalRating: integer('personal_rating'),
   tastingNotes: text('tasting_notes'),
+  /** Commentaire libre (cadeau, occasion, etc.) — non exposé sur la page publique */
+  personalComment: text('personal_comment'),
   isFavorite: boolean('is_favorite').default(false),
   status: text('status').default('available'),
   nfcTagId: text('nfc_tag_id'),
