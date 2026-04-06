@@ -518,6 +518,27 @@ def analyze_with_ollama(jpeg_paths: list[Path]) -> Optional[dict]:
             log.error(f"Message keys: {list(message.keys())}")
             return None
 
+    # Strip qwen3 <think>...</think> reasoning blocks (present even when think:False)
+    raw_no_think = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL).strip()
+    if raw_no_think:
+        raw = raw_no_think
+        log.debug("Blocs <think> supprimés du contenu Ollama")
+    else:
+        # Content was ONLY thinking — try to find JSON inside the think block itself
+        think_content = re.search(r'<think>(.*?)</think>', raw, re.DOTALL)
+        if think_content:
+            inner = think_content.group(1).strip()
+            m = re.search(r'\{.*\}', inner, re.DOTALL)
+            if m:
+                log.warning("JSON trouvé à l'intérieur d'un bloc <think> — extraction forcée")
+                try:
+                    return json.loads(m.group(0))
+                except json.JSONDecodeError:
+                    pass
+        log.error("Réponse Ollama ne contient que du contenu <think> sans JSON exploitable")
+        log.error(f"Réponse brute (500 chars): {raw[:500]}")
+        return None
+
     # Strip markdown code blocks if present
     cleaned = re.sub(r'^```(?:json)?\s*', '', raw.strip(), flags=re.MULTILINE)
     cleaned = re.sub(r'```\s*$', '', cleaned.strip(), flags=re.MULTILINE)
