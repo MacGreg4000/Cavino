@@ -467,17 +467,27 @@ def analyze_with_ollama(jpeg_paths: list[Path]) -> Optional[dict]:
         log.error("Aucune image valide à envoyer à Ollama")
         return None
 
-    # /no_think désactive le mode thinking de qwen3 (fallback si think:False non supporté)
-    no_think_prefix = "/no_think\n" if 'qwen3' in OLLAMA_MODEL.lower() else ""
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a JSON-only output assistant. "
+                "NEVER output reasoning, thinking, explanations, or any text before or after the JSON. "
+                "Your response MUST start with '{' and end with '}'. Nothing else."
+            ),
+        },
+        {
+            "role": "user",
+            "content": prompt,
+            "images": images_b64,
+        },
+    ]
 
     payload = {
         "model": OLLAMA_MODEL,
-        "messages": [{
-            "role": "user",
-            "content": no_think_prefix + prompt,
-            "images": images_b64,
-        }],
-        "options": {"temperature": 0.1, "num_ctx": 16384, "num_predict": 4096, "think": False},
+        "think": False,           # niveau racine — supporté par qwen3 dans Ollama ≥ 0.6
+        "messages": messages,
+        "options": {"temperature": 0.1, "num_ctx": 16384, "num_predict": 8192},
         "stream": False,
     }
 
