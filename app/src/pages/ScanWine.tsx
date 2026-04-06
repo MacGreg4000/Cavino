@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Camera, X, RotateCcw, Sparkles, ImagePlus, AlertCircle } from 'lucide-react';
+import { Camera, X, RotateCcw, Sparkles, ImagePlus, AlertCircle, Images } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button } from '../components/ui/Button';
 import { useToast } from '../components/ui/Toast';
@@ -21,7 +21,8 @@ function PhotoCapture({
   onRemove: () => void;
   required?: boolean;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const libraryRef = useRef<HTMLInputElement>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -29,7 +30,6 @@ function PhotoCapture({
     const reader = new FileReader();
     reader.onloadend = () => onCapture(file, reader.result as string);
     reader.readAsDataURL(file);
-    // Reset input so the same file can be re-selected after removal
     e.target.value = '';
   };
 
@@ -37,8 +37,11 @@ function PhotoCapture({
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
         <span className="text-sm font-medium text-text-secondary">{label}</span>
-        {required && <span className="text-xs text-accent-bright">Requis</span>}
-        {!required && <span className="text-xs text-text-muted">Optionnel</span>}
+        {required ? (
+          <span className="text-xs text-accent-bright">Requis</span>
+        ) : (
+          <span className="text-xs text-text-muted">Optionnel</span>
+        )}
       </div>
 
       {photo ? (
@@ -47,7 +50,7 @@ function PhotoCapture({
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
           <div className="absolute bottom-2 right-2 flex gap-2">
             <button
-              onClick={() => inputRef.current?.click()}
+              onClick={() => cameraRef.current?.click()}
               className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
               title="Reprendre"
             >
@@ -63,26 +66,51 @@ function PhotoCapture({
           </div>
         </div>
       ) : (
-        <button
-          onClick={() => inputRef.current?.click()}
-          className="aspect-[3/4] bg-surface-hover rounded-[var(--radius-md)] flex flex-col items-center justify-center gap-3 border-2 border-dashed border-border hover:border-accent transition-colors"
-        >
-          {required ? (
-            <Camera size={32} className="text-accent" />
-          ) : (
-            <ImagePlus size={28} className="text-text-muted" />
-          )}
-          <span className="text-xs text-text-muted px-4 text-center">
-            {required ? 'Prendre une photo (recto)' : 'Ajouter le verso (facultatif)'}
-          </span>
-        </button>
+        <div className="aspect-[3/4] bg-surface-hover rounded-[var(--radius-md)] flex flex-col items-center justify-center gap-4 border-2 border-dashed border-border">
+          {/* Icône centrale */}
+          <div className="flex flex-col items-center gap-1">
+            {required ? (
+              <Camera size={28} className="text-accent" />
+            ) : (
+              <ImagePlus size={24} className="text-text-muted" />
+            )}
+            <span className="text-[10px] text-text-muted text-center px-2">
+              {required ? 'Photo recto' : 'Verso (optionnel)'}
+            </span>
+          </div>
+
+          {/* Deux boutons */}
+          <div className="flex flex-col gap-2 w-full px-3">
+            <button
+              onClick={() => cameraRef.current?.click()}
+              className="flex items-center justify-center gap-2 py-1.5 rounded-[var(--radius-sm)] bg-accent/15 border border-accent/30 text-accent-bright text-xs font-medium hover:bg-accent/25 transition-colors"
+            >
+              <Camera size={13} /> Appareil photo
+            </button>
+            <button
+              onClick={() => libraryRef.current?.click()}
+              className="flex items-center justify-center gap-2 py-1.5 rounded-[var(--radius-sm)] bg-surface border border-border text-text-secondary text-xs font-medium hover:bg-surface-hover transition-colors"
+            >
+              <Images size={13} /> Bibliothèque
+            </button>
+          </div>
+        </div>
       )}
 
+      {/* Input caméra */}
       <input
-        ref={inputRef}
+        ref={cameraRef}
         type="file"
         accept="image/*"
         capture="environment"
+        className="hidden"
+        onChange={handleChange}
+      />
+      {/* Input bibliothèque */}
+      <input
+        ref={libraryRef}
+        type="file"
+        accept="image/*"
         className="hidden"
         onChange={handleChange}
       />
