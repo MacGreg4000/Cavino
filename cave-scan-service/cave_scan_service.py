@@ -530,6 +530,7 @@ def analyze_with_ollama(jpeg_paths: list[Path]) -> Optional[dict]:
         {
             "role": "system",
             "content": (
+                "/no_think\n"
                 "You are a JSON-only output assistant. "
                 "NEVER output reasoning, thinking, explanations, or any text before or after the JSON. "
                 "Your response MUST start with '{' and end with '}'. Nothing else."
@@ -578,13 +579,17 @@ def analyze_with_ollama(jpeg_paths: list[Path]) -> Optional[dict]:
                 log.error(f"Message keys: {list(message.keys())}")
                 return None
 
-        # Strip qwen3 <think>...</think> reasoning blocks (present even when think:False)
-        raw_no_think = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL).strip()
+        # Strip qwen3 <think> blocks — fermés (</think>) ou non fermés (tronqués)
+        # Étape 1 : supprimer les blocs fermés <think>...</think>
+        raw_no_think = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL)
+        # Étape 2 : supprimer tout bloc ouvert non fermé <think>... jusqu'à la fin
+        raw_no_think = re.sub(r'<think>.*$', '', raw_no_think, flags=re.DOTALL).strip()
+
         if raw_no_think:
             raw = raw_no_think
             log.debug("Blocs <think> supprimés du contenu Ollama")
         else:
-            # Content was ONLY thinking — try to find JSON inside the think block itself
+            # Rien après les blocs think — chercher du JSON à l'intérieur si bloc fermé
             think_content = re.search(r'<think>(.*?)</think>', raw, re.DOTALL)
             if think_content:
                 inner = think_content.group(1).strip()
