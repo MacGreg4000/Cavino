@@ -37,18 +37,18 @@ export function AddWine() {
     <div>
       <PageHeader title="Ajouter un vin" back />
 
-      <div className="px-4 pt-6 max-w-lg mx-auto space-y-3">
-        <p className="text-sm text-text-secondary mb-2">Comment veux-tu ajouter cette bouteille ?</p>
+      <div className="px-4 pt-8 max-w-lg mx-auto space-y-4 pb-8">
+        <p className="text-sm text-text-secondary mb-4">Comment veux-tu ajouter cette bouteille ?</p>
 
         {MODES.map(({ to, icon: Icon, title, description, accent, border, iconBg }) => (
           <Link key={to} to={to}>
-            <div className={`flex items-center gap-4 p-4 rounded-[var(--radius-lg)] border transition-colors ${border}`}>
-              <div className={`w-12 h-12 rounded-[var(--radius-md)] flex items-center justify-center flex-shrink-0 ${iconBg}`}>
-                <Icon size={24} className={accent} />
+            <div className={`flex items-center gap-5 p-5 rounded-[var(--radius-lg)] border transition-colors ${border}`}>
+              <div className={`w-14 h-14 rounded-[var(--radius-md)] flex items-center justify-center flex-shrink-0 ${iconBg}`}>
+                <Icon size={26} className={accent} />
               </div>
               <div className="flex-1 min-w-0">
                 <p className={`text-sm font-semibold ${accent}`}>{title}</p>
-                <p className="text-xs text-text-secondary mt-0.5 leading-relaxed">{description}</p>
+                <p className="text-xs text-text-secondary mt-1 leading-relaxed">{description}</p>
               </div>
               <ChevronRight size={18} className="text-text-muted flex-shrink-0" />
             </div>
