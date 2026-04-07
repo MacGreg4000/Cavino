@@ -15,6 +15,7 @@ import { CellarView } from './pages/CellarView';
 import { CellarEditor } from './pages/CellarEditor';
 import { Advisor } from './pages/Advisor';
 import { Stats } from './pages/Stats';
+import { DrinkNow } from './pages/DrinkNow';
 import { Settings } from './pages/Settings';
 import { PublicWineList } from './pages/public/PublicWineList';
 import { PublicWineDetail } from './pages/public/PublicWineDetail';
@@ -44,6 +45,7 @@ export const router = createBrowserRouter([
         element: <AppLayout />,
         children: [
           { path: '/', element: <Home /> },
+          { path: '/drink-now', element: <DrinkNow /> },
           { path: '/cave', element: <Cave /> },
           { path: '/cave/:id', element: <WineDetail /> },
           { path: '/pending', element: <PendingWines /> },

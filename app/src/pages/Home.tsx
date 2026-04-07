@@ -65,10 +65,7 @@ export function Home() {
   const totalValue = wines.reduce((sum, w) => sum + (parseFloat(w.estimatedValue || '0') || 0) * (w.quantity || 1), 0);
 
   const currentYear = new Date().getFullYear();
-  const drinkSoon = wines.filter((w) => w.drinkUntil && w.drinkUntil <= currentYear);
-  const readyNow = wines.filter(
-    (w) => w.drinkFrom && w.drinkUntil && currentYear >= w.drinkFrom && currentYear <= w.drinkUntil
-  );
+  const drinkNow = wines.filter((w) => w.drinkUntil && w.drinkUntil <= currentYear);
 
   const timeline = buildTimeline(wines);
 
@@ -123,24 +120,26 @@ export function Home() {
             <p className="text-[10px] text-text-muted leading-tight">Valeur estimée</p>
           </div>
         </Card>
-        <Card className="!bg-success/10 !border-success/20">
-          <div className="flex flex-col gap-1">
-            <Sparkles size={18} className="text-success" />
-            <p className="text-2xl font-display font-bold text-success">{readyNow.length}</p>
-            <p className="text-[10px] text-text-muted leading-tight">Prêts à boire</p>
-          </div>
-        </Card>
+        <Link to="/drink-now" className="group">
+          <Card className="!bg-warning/10 !border-warning/20 hover:bg-warning/15 transition-colors">
+            <div className="flex flex-col gap-1">
+              <Clock size={18} className="text-warning" />
+              <p className="text-2xl font-display font-bold text-warning">{drinkNow.length}</p>
+              <p className="text-[10px] text-text-muted leading-tight">À boire maintenant</p>
+            </div>
+          </Card>
+        </Link>
       </div>
 
-      {/* Drink soon */}
-      {drinkSoon.length > 0 && (
+      {/* Drink now */}
+      {drinkNow.length > 0 && (
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-3">
             <Clock size={16} className="text-warning" />
             <h2 className="text-sm font-semibold text-text">À boire maintenant</h2>
           </div>
           <div className="flex flex-col gap-2">
-            {drinkSoon.slice(0, 3).map((wine) => (
+            {drinkNow.slice(0, 3).map((wine) => (
               <Link key={wine.id} to={`/cave/${wine.id}`}>
                 <div className="flex items-center gap-3 bg-surface rounded-[var(--radius-md)] p-3 border border-border border-l-4 border-l-warning/70 hover:bg-surface-hover transition-colors">
                   {wine.photoUrl ? (
