@@ -36,15 +36,64 @@ function typeBadgeStyle(t?: string | null): string {
 
 function drinkStatus(w: Record<string, any>): { label: string; style: string } | null {
   const year  = new Date().getFullYear();
-  const from  = w.drink_from  as number | null;
-  const until = w.drink_until as number | null;
-  const pf    = w.peak_from   as number | null;
-  const pu    = w.peak_until  as number | null;
+  const from  = w.drinkFrom  as number | null;
+  const until = w.drinkUntil as number | null;
+  const pf    = w.peakFrom   as number | null;
+  const pu    = w.peakUntil  as number | null;
   if (!from && !until && !pf && !pu) return null;
   if (from  && year < from)  return { label: 'Trop tôt',  style: 'background:#DBEAFE;color:#1E40AF' };
   if (until && year > until) return { label: 'Dépassé',   style: 'background:#F3F4F6;color:#6B7280' };
   if (pf && pu && year >= pf && year <= pu) return { label: 'Apogée', style: 'background:#FEF3C7;color:#92400E' };
   return { label: 'À boire', style: 'background:#D1FAE5;color:#065F46' };
+}
+
+function drinkTimeline(w: Record<string, any>): string {
+  const year   = new Date().getFullYear();
+  const from   = w.drinkFrom  as number | null;
+  const until  = w.drinkUntil as number | null;
+  const pf     = w.peakFrom   as number | null;
+  const pu     = w.peakUntil  as number | null;
+  if (!from && !until) return '';
+
+  const start  = Math.min(from ?? year, year) - 1;
+  const end    = Math.max(until ?? year, year) + 2;
+  const span   = end - start;
+  if (span <= 0) return '';
+
+  const pct = (y: number) => `${Math.max(0, Math.min(100, ((y - start) / span) * 100)).toFixed(1)}%`;
+
+  const drinkL = pct(from  ?? year);
+  const drinkR = pct((until ?? year) + 1);
+  const drinkW = `${Math.max(0, Math.min(100, ((( until ?? year) + 1 - (from ?? year)) / span) * 100)).toFixed(1)}%`;
+
+  const peakHtml = (pf && pu)
+    ? `<div class="tl-peak" style="left:${pct(pf)};width:${pct(pu + 1).replace('%','')}% - whatever"></div>`
+    : '';
+
+  // Peak bar
+  const peakBar = (pf && pu) ? `
+    <div style="position:absolute;top:0;bottom:0;left:${pct(pf)};width:${(((pu + 1 - pf) / span) * 100).toFixed(1)}%;background:#B58D3D;border-radius:2px;opacity:0.9;"></div>` : '';
+
+  // Current year marker
+  const nowPct  = pct(year);
+  const nowBar  = `<div style="position:absolute;top:-3px;bottom:-3px;left:${nowPct};width:2px;background:#8B1A1A;border-radius:1px;"></div>`;
+
+  // Labels
+  const labelFrom  = from  ? `<span style="position:absolute;left:${drinkL};transform:translateX(-50%);font-size:7px;color:#9CA3AF;top:-11px;">${from}</span>`  : '';
+  const labelUntil = until ? `<span style="position:absolute;right:0;left:${pct((until ?? year)+1)};transform:translateX(-50%);font-size:7px;color:#9CA3AF;top:-11px;">${until}</span>` : '';
+  const labelNow   = `<span style="position:absolute;left:${nowPct};transform:translateX(-50%);font-size:7px;color:#8B1A1A;font-weight:700;bottom:-12px;">${year}</span>`;
+
+  return `
+  <div style="position:relative;margin:6px 0 14px 0;height:6px;background:#F3F4F6;border-radius:3px;">
+    ${labelFrom}${labelUntil}
+    <!-- Drink window -->
+    <div style="position:absolute;top:0;bottom:0;left:${drinkL};width:${drinkW};background:#D1FAE5;border-radius:3px;"></div>
+    <!-- Peak window -->
+    ${peakBar}
+    <!-- Now marker -->
+    ${nowBar}
+    ${labelNow}
+  </div>`;
 }
 
 function esc(s?: string | null) {
@@ -90,23 +139,24 @@ function buildHTML(allWines: Record<string, any>[], photosPath: string, title: s
     sections += `<div class="section-header"><span class="section-title">${esc(label)}</span></div>\n`;
 
     for (const w of list) {
-      const imgSrc  = photoBase64(w.photo_url, photosPath);
+      const imgSrc  = photoBase64(w.photoUrl, photosPath);
       const name    = esc(trunc(w.name || 'Sans nom', 60));
-      const vintage = w.vintage ? ` — ${w.vintage}` : (w.non_vintage ? ' — NV' : '');
+      const vintage = w.vintage ? ` — ${w.vintage}` : (w.nonVintage ? ' — NV' : '');
       const grapes  = ((w.grapes as string[] | null) || []).join(', ');
       const region  = [w.region, w.country].filter(Boolean).join(', ');
       const appel   = esc(w.appellation || '');
       const desc    = esc(trunc(w.description || w.palate || '', 200));
       const awards  = (w.awards as Array<{name:string}> | null) || [];
 
-      const price   = w.purchase_price
-        ? `${parseFloat(w.purchase_price).toFixed(2).replace('.', ',')} €`
-        : w.estimated_value
-        ? `≈ ${parseFloat(w.estimated_value).toFixed(2).replace('.', ',')} €`
+      const price   = w.purchasePrice
+        ? `${parseFloat(w.purchasePrice).toFixed(2).replace('.', ',')} €`
+        : w.estimatedValue
+        ? `≈ ${parseFloat(w.estimatedValue).toFixed(2).replace('.', ',')} €`
         : '';
       const qty     = w.quantity ? `Qté : ${w.quantity}` : '';
 
-      // Badges
+      // Timeline + Badges
+      const timeline = drinkTimeline(w);
       let badges = `<span class="badge" style="${typeBadgeStyle(w.type)}">${esc(w.type || 'autre')}</span>`;
       const ds = drinkStatus(w);
       if (ds) badges += `<span class="badge" style="${ds.style}">${ds.label}</span>`;
@@ -131,6 +181,7 @@ function buildHTML(allWines: Record<string, any>[], photosPath: string, title: s
           ${grapeHtml ? `<div class="wine-grapes-line">${grapeHtml}</div>` : ''}
           ${appel ? `<div class="wine-appellation">${appel}</div>` : ''}
           ${desc ? `<div class="wine-desc">${desc}</div>` : ''}
+          ${timeline}
           <div class="wine-badges">${badges}</div>
         </div>
       </div>`;
