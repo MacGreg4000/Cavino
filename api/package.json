@@ -21,13 +21,12 @@
     "fastify": "^5.8.4",
     "fastify-plugin": "^5.1.0",
     "postgres": "^3.4.8",
-    "pdfkit": "^0.15.2",
+    "puppeteer-core": "^24.0.0",
     "uuid": "^13.0.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
-    "@types/pdfkit": "^0.13.9",
     "@types/uuid": "^10.0.0",
     "@types/ws": "^8.18.1",
     "drizzle-kit": "^0.31.10",
