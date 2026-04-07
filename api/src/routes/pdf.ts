@@ -263,8 +263,9 @@ function buildHTML(allWines: Record<string, any>[], photosPath: string, title: s
   .wine-photo img {
     width: 54px;
     height: 80px;
-    object-fit: cover;
+    object-fit: contain;
     object-position: center;
+    background: #F9FAFB;
     border: 1px solid #E5E7EB;
     display: block;
   }
