@@ -6,46 +6,65 @@ import { db } from '../db/index.js';
 import { wines } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 
-// ─── Palette ──────────────────────────────────────────────────────────────────
+// ─── Palette (thème clair, style carte de restaurant) ────────────────────────
 const C = {
-  bg:       '#0A0A0D',
-  surface:  '#111116',
-  surfaceAlt: '#0E0E12',
-  cream:    '#EDE8DF',
-  gold:     '#C5A96E',
-  muted:    '#5C5C66',
-  dim:      '#3A3A42',
-  divider:  '#1E1E24',
-  accent:   '#8B1A1A',
-  white:    '#F5F0E8',
+  bg:       '#FFFFFF',
+  pageBg:   '#F8F6F1',   // parchemin très léger pour l'extérieur
+  text:     '#111827',   // gray-900
+  textSec:  '#6B7280',   // gray-500
+  textMut:  '#9CA3AF',   // gray-400
+  mustard:  '#B58D3D',   // accent or
+  wineRed:  '#8B1A1A',   // bordeaux
+  divider:  '#E5E7EB',   // gray-200
+  surface:  '#F9FAFB',   // gray-50
+  // Badges
+  badgeRed: { bg: '#FEE2E2', fg: '#991B1B' },
+  badgeGold:{ bg: '#FEF3C7', fg: '#92400E' },
+  badgeGrn: { bg: '#D1FAE5', fg: '#065F46' },
+  badgeGray:{ bg: '#F3F4F6', fg: '#374151' },
+  badgeBlue:{ bg: '#DBEAFE', fg: '#1E40AF' },
+  badgePurp:{ bg: '#EDE9FE', fg: '#5B21B6' },
 };
 
-const TYPE_COLORS: Record<string, string> = {
-  rouge:      '#C0392B',
-  blanc:      '#C9A227',
-  rosé:       '#D4748C',
-  rose:       '#D4748C',
-  champagne:  '#D4AF37',
-  mousseux:   '#D4AF37',
-  pétillant:  '#A8B86C',
-  moelleux:   '#9B59B6',
-  fortifié:   '#7D6BAE',
-  spiritueux: '#5B8A9A',
+const TYPE_COLORS: Record<string, typeof C.badgeRed> = {
+  rouge:      { bg: '#FEE2E2', fg: '#991B1B' },
+  blanc:      { bg: '#FEF3C7', fg: '#92400E' },
+  rosé:       { bg: '#FCE7F3', fg: '#9D174D' },
+  rose:       { bg: '#FCE7F3', fg: '#9D174D' },
+  champagne:  { bg: '#FEF9C3', fg: '#78350F' },
+  mousseux:   { bg: '#FEF9C3', fg: '#78350F' },
+  pétillant:  { bg: '#ECFDF5', fg: '#065F46' },
+  moelleux:   { bg: '#EDE9FE', fg: '#5B21B6' },
+  fortifié:   { bg: '#E0E7FF', fg: '#3730A3' },
+  spiritueux: { bg: '#F0F9FF', fg: '#0C4A6E' },
 };
 
 const TYPE_LABELS: Record<string, string> = {
   rouge: 'Vins Rouges', blanc: 'Vins Blancs', rosé: 'Vins Rosés',
   rose: 'Vins Rosés', champagne: 'Champagnes & Crémants',
-  mousseux: 'Vins Mousseux', pétillant: 'Pétillants',
+  mousseux: 'Vins Mousseux', pétillant: 'Pétillants Naturels',
   moelleux: 'Vins Moelleux & Liquoreux', fortifié: 'Vins Fortifiés',
   spiritueux: 'Spiritueux', autre: 'Autres',
 };
 
-function typeColor(t?: string | null) {
-  if (!t) return C.muted;
+function typeBadge(t?: string | null) {
+  if (!t) return C.badgeGray;
   const k = t.toLowerCase();
   for (const [key, col] of Object.entries(TYPE_COLORS)) if (k.includes(key)) return col;
-  return C.muted;
+  return C.badgeGray;
+}
+
+function drinkStatus(w: Record<string, any>): { label: string; badge: typeof C.badgeGrn } | null {
+  const year = new Date().getFullYear();
+  const from  = w.drink_from  as number | null;
+  const until = w.drink_until as number | null;
+  const pf    = w.peak_from   as number | null;
+  const pu    = w.peak_until  as number | null;
+  if (!from && !until && !pf && !pu) return null;
+  if (from  && year < from)  return { label: 'Trop tôt',  badge: C.badgeBlue };
+  if (until && year > until) return { label: 'Passé',     badge: C.badgeGray };
+  if (pf && pu && year >= pf && year <= pu) return { label: 'Apogée', badge: C.badgeGold };
+  return { label: 'À boire', badge: C.badgeGrn };
 }
 
 function hexRgb(hex: string): [number, number, number] {
@@ -53,200 +72,234 @@ function hexRgb(hex: string): [number, number, number] {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
-// ─── Layout (1mm = 2.835pt) ───────────────────────────────────────────────────
-const MM       = 2.835;
+// ─── Layout ───────────────────────────────────────────────────────────────────
 const A4W      = 595.28;
 const A4H      = 841.89;
-const ML       = 14 * MM;   // left margin
-const MR       = 14 * MM;   // right margin
-const CW       = A4W - ML - MR;   // content width
-const HEADER_H = 15 * MM;
-const FOOTER_H = 8  * MM;
-const AVAIL_H  = A4H - HEADER_H - FOOTER_H;
+const ML       = 45;          // left margin
+const MR       = 45;          // right margin
+const CW       = A4W - ML - MR;
+const HEADER_H = 60;
+const FOOTER_H = 28;
+const AVAIL    = A4H - HEADER_H - FOOTER_H;
 
-// Card geometry — 8 per page target
-const CARD_H   = 26 * MM;   // 73.7pt
-const CARD_GAP = 1.8 * MM;  // thin breathing room
-const PH_W     = 17 * MM;   // photo width
-const PH_H     = 24 * MM;   // photo height (portrait)
-const PH_GAP   = 4  * MM;   // gap between photo and text
-const TX_X     = ML + PH_W + PH_GAP;
-const TX_W     = CW - PH_W - PH_GAP;
-const SEC_H    = 8  * MM;   // section header height
+const PHOTO_W   = 52;         // photo column
+const PHOTO_GAP = 20;         // gap photo → text
+const TX_X      = ML + PHOTO_W + PHOTO_GAP;
+const TX_W      = CW - PHOTO_W - PHOTO_GAP;
 
-// ─── Draw primitives ──────────────────────────────────────────────────────────
-function rect(doc: PDFKit.PDFDocument, x: number, y: number, w: number, h: number, color: string) {
-  doc.save().rect(x, y, w, h).fill(hexRgb(color)).restore();
+const CARD_H    = 92;         // ~8 per page
+const SECTION_H = 32;
+
+// ─── Primitives ───────────────────────────────────────────────────────────────
+function fillRect(doc: PDFKit.PDFDocument, x: number, y: number, w: number, h: number, hex: string) {
+  doc.save().rect(x, y, w, h).fill(hexRgb(hex)).restore();
 }
 
-function line(doc: PDFKit.PDFDocument, x1: number, y1: number, x2: number, y2: number, color: string, lw = 0.4) {
-  doc.save().moveTo(x1, y1).lineTo(x2, y2)
-    .strokeColor(hexRgb(color)).lineWidth(lw).stroke().restore();
+function drawLine(doc: PDFKit.PDFDocument, x1: number, y1: number, x2: number, y2: number, hex: string, lw = 0.5) {
+  doc.save().moveTo(x1, y1).lineTo(x2, y2).strokeColor(hexRgb(hex)).lineWidth(lw).stroke().restore();
 }
 
-function text(
+function txt(
   doc: PDFKit.PDFDocument,
   str: string,
-  x: number,
-  y: number,
-  {
-    font = 'Helvetica',
-    size = 8,
-    color = C.cream,
-    width,
-    align = 'left',
-    lineBreak = false,
-    ellipsis = false,
-  }: {
+  x: number, y: number,
+  opts: {
     font?: string; size?: number; color?: string;
     width?: number; align?: 'left' | 'center' | 'right';
     lineBreak?: boolean; ellipsis?: boolean;
   } = {}
 ) {
-  const opts: PDFKit.Mixins.TextOptions = { lineBreak, align };
-  if (width  !== undefined) opts.width   = width;
-  if (ellipsis)             opts.ellipsis = true;
-  doc.save().font(font).fontSize(size).fillColor(hexRgb(color))
-    .text(str, x, y, opts).restore();
+  const { font='Helvetica', size=9, color=C.text, width, align='left', lineBreak=false, ellipsis=false } = opts;
+  const o: PDFKit.Mixins.TextOptions = { lineBreak, align };
+  if (width    !== undefined) o.width    = width;
+  if (ellipsis)               o.ellipsis = true;
+  doc.save().font(font).fontSize(size).fillColor(hexRgb(color)).text(str, x, y, o).restore();
 }
 
 function trunc(s: string, n: number) { return s.length <= n ? s : s.slice(0, n - 1) + '…'; }
 
-// ─── Page chrome ──────────────────────────────────────────────────────────────
-function drawChrome(doc: PDFKit.PDFDocument, title: string, count: number, pageNum: number) {
-  // Full dark page
-  rect(doc, 0, 0, A4W, A4H, C.bg);
-  // Header band
-  rect(doc, 0, 0, A4W, HEADER_H, C.surface);
-  // Thin accent line below header
-  rect(doc, 0, HEADER_H - 0.8, A4W, 0.8, C.accent);
+// Badge → returns x offset after badge
+function badge(doc: PDFKit.PDFDocument, label: string, x: number, y: number, bg: string, fg: string): number {
+  doc.save().font('Helvetica-Bold').fontSize(7);
+  const tw = doc.widthOfString(label.toUpperCase());
+  const bw = tw + 16;
+  const bh = 13;
+  doc.roundedRect(x, y, bw, bh, 6).fill(hexRgb(bg)).restore();
+  txt(doc, label.toUpperCase(), x + 8, y + 2.5, { font: 'Helvetica-Bold', size: 7, color: fg });
+  return bw + 5;
+}
 
-  // Left: title
-  text(doc, title, ML, 4.5 * MM, { font: 'Helvetica-Bold', size: 13, color: C.cream });
-  // Right: subtitle
+// ─── Page chrome ──────────────────────────────────────────────────────────────
+function drawChrome(doc: PDFKit.PDFDocument, title: string, count: number, page: number) {
+  // White page
+  fillRect(doc, 0, 0, A4W, A4H, C.bg);
+
+  // Header: thin top accent bar
+  fillRect(doc, 0, 0, A4W, 3, C.wineRed);
+
+  // Cave name — large light tracking
+  doc.save()
+    .font('Helvetica').fontSize(26)
+    .fillColor(hexRgb(C.text))
+    .text(title.toUpperCase(), ML, 14, { characterSpacing: 4, lineBreak: false })
+    .restore();
+
+  // Subtitle right-aligned
   const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
-  const sub = `${today}  ·  ${count} référence${count > 1 ? 's' : ''}`;
-  text(doc, sub, 0, 5 * MM, { size: 7, color: C.gold, width: A4W - MR, align: 'right' });
-  // Thin gold rule under title
-  text(doc, 'Carte des Vins', ML, 9 * MM, { font: 'Helvetica-Oblique', size: 7.5, color: C.muted });
+  txt(doc, `${count} référence${count > 1 ? 's' : ''}  ·  ${today}`, 0, 18, {
+    size: 8, color: C.textMut, width: A4W - MR, align: 'right',
+  });
+
+  // Horizontal rule
+  drawLine(doc, ML, HEADER_H - 8, A4W - MR, HEADER_H - 8, C.divider, 0.8);
+  txt(doc, 'Carte des Vins', ML, HEADER_H - 20, { font: 'Helvetica', size: 8, color: C.textMut });
 
   // Footer
-  text(doc, `${pageNum}`, 0, A4H - 5.5 * MM, { size: 7, color: C.muted, width: A4W, align: 'center' });
+  drawLine(doc, ML, A4H - FOOTER_H + 8, A4W - MR, A4H - FOOTER_H + 8, C.divider, 0.5);
+  txt(doc, `${title}  —  ${new Date().getFullYear()}`, 0, A4H - FOOTER_H + 12, {
+    size: 7, color: C.textMut, width: A4W, align: 'center',
+  });
+  txt(doc, `${page}`, 0, A4H - FOOTER_H + 12, {
+    size: 7, color: C.textMut, width: A4W - MR, align: 'right',
+  });
 }
 
 // ─── Section header ───────────────────────────────────────────────────────────
 function drawSection(doc: PDFKit.PDFDocument, wineType: string, y: number) {
-  const col   = typeColor(wineType);
   const label = (TYPE_LABELS[wineType.toLowerCase()] || wineType).toUpperCase();
-  // Subtle background
-  rect(doc, ML, y, CW, SEC_H, C.surfaceAlt);
-  // Left color bar
-  rect(doc, ML, y, 2, SEC_H, col);
-  // Label
-  text(doc, label, ML + 6, y + 2.4 * MM, { font: 'Helvetica-Bold', size: 7.5, color: col });
-  // Bottom hairline
-  line(doc, ML, y + SEC_H, ML + CW, y + SEC_H, C.dim);
+  // Very subtle background band
+  fillRect(doc, ML, y + 8, CW, SECTION_H - 14, C.surface);
+  drawLine(doc, ML, y + SECTION_H - 2, ML + CW, y + SECTION_H - 2, C.divider);
+  // Section title
+  doc.save()
+    .font('Helvetica-Bold').fontSize(8).fillColor(hexRgb(C.wineRed))
+    .text(label, ML + 6, y + 14, { characterSpacing: 1.5, lineBreak: false })
+    .restore();
 }
 
 // ─── Wine card ────────────────────────────────────────────────────────────────
-function drawCard(
-  doc: PDFKit.PDFDocument,
-  wine: Record<string, any>,
-  y: number,
-  photosPath: string,
-  alt: boolean,
-) {
-  const col = typeColor(wine.type);
-
-  // Card background (very subtle alt)
-  rect(doc, ML, y, CW, CARD_H, alt ? C.surfaceAlt : C.bg);
+function drawCard(doc: PDFKit.PDFDocument, wine: Record<string, any>, y: number, photosPath: string) {
+  const padV = 10;
 
   // ── Photo ──
-  const py = y + (CARD_H - PH_H) / 2;
+  const photoH = CARD_H - padV * 2;
+  const photoY = y + padV;
   if (wine.photo_url) {
     try {
-      const file  = wine.photo_url.replace('/photos/', '');
+      const file  = (wine.photo_url as string).replace('/photos/', '');
       const fpath = path.join(photosPath, file);
       if (fs.existsSync(fpath)) {
-        doc.save().rect(ML, py, PH_W, PH_H).clip()
-          .image(fpath, ML, py, { width: PH_W, height: PH_H, cover: [PH_W, PH_H] })
+        doc.save().rect(ML, photoY, PHOTO_W, photoH).clip()
+          .image(fpath, ML, photoY, { width: PHOTO_W, height: photoH, cover: [PHOTO_W, photoH] })
           .restore();
-      } else { drawPlaceholder(doc, ML, py, col); }
-    } catch { drawPlaceholder(doc, ML, py, col); }
+        // Subtle border around photo
+        doc.save().rect(ML, photoY, PHOTO_W, photoH)
+          .strokeColor(hexRgb(C.divider)).lineWidth(0.5).stroke().restore();
+      } else { drawPhotoPh(doc, ML, photoY, PHOTO_W, photoH); }
+    } catch { drawPhotoPh(doc, ML, photoY, PHOTO_W, photoH); }
   } else {
-    drawPlaceholder(doc, ML, py, col);
+    drawPhotoPh(doc, ML, photoY, PHOTO_W, photoH);
   }
 
   // ── Text block ──
-  const pad = 2.8 * MM;
-  let ty = y + pad;
+  let ty = y + padV;
 
-  // Row 1: Name (bold) + Vintage (gold) — same line
-  const name    = wine.name || 'Sans nom';
-  const vintage = wine.vintage ? `  ${wine.vintage}` : (wine.non_vintage ? '  NV' : '');
-  const nameW   = TX_W * 0.65;
-  text(doc, trunc(name, 38), TX_X, ty, { font: 'Helvetica-Bold', size: 9, color: C.cream, width: nameW, ellipsis: true });
-  if (vintage) {
-    text(doc, vintage.trim(), TX_X + nameW, ty, { font: 'Helvetica-Bold', size: 9, color: col });
+  // Row 1: Name + price (right)
+  const name    = (wine.name || 'Sans nom') as string;
+  const vintage = wine.vintage ? ` — ${wine.vintage}` : (wine.non_vintage ? ' — NV' : '');
+  const price   = wine.purchase_price
+    ? `${parseFloat(wine.purchase_price).toFixed(2).replace('.', ',')} €`
+    : wine.estimated_value
+    ? `≈ ${parseFloat(wine.estimated_value).toFixed(2).replace('.', ',')} €`
+    : '';
+
+  // Price right-aligned
+  if (price) {
+    txt(doc, price, TX_X, ty, { font: 'Helvetica-Bold', size: 11, color: C.text, width: TX_W, align: 'right' });
   }
 
-  ty += 9 * 1.35;
+  // Name (bold uppercase, truncated to leave room for price)
+  const nameMaxW = price ? TX_W - 70 : TX_W;
+  txt(doc, trunc((name + vintage).toUpperCase(), 55), TX_X, ty, {
+    font: 'Helvetica-Bold', size: 10, color: C.text, width: nameMaxW, ellipsis: true,
+  });
+  ty += 14;
 
-  // Row 2: Domain · Appellation
-  const domainParts = [wine.domain, wine.appellation].filter(Boolean).join('  ·  ');
-  if (domainParts) {
-    text(doc, trunc(domainParts, 68), TX_X, ty, { size: 7.5, color: C.gold, width: TX_W, ellipsis: true });
-    ty += 7.5 * 1.35;
+  // Row 2: Quantity (below price)
+  if (wine.quantity && wine.quantity > 0) {
+    txt(doc, `Qté : ${wine.quantity}`, TX_X, ty - 1, {
+      size: 7, color: C.textMut, width: TX_W, align: 'right',
+    });
   }
 
-  // Row 3: Region · Country + type badge
-  const regionParts = [wine.region, wine.country].filter(Boolean).join('  ·  ');
-  const typeStr = wine.type ? `  ·  ${wine.type.toUpperCase()}` : '';
-  if (regionParts || typeStr) {
-    text(doc, trunc((regionParts + typeStr), 72), TX_X, ty, { size: 6.5, color: C.muted, width: TX_W, ellipsis: true });
-    ty += 6.5 * 1.35;
+  // Row 2: Grapes · Region
+  const grapes = ((wine.grapes as string[] | null) || []).join(', ');
+  const region = [wine.region, wine.country].filter(Boolean).join(', ');
+  const grapeLine = [grapes, region].filter(Boolean);
+  if (grapeLine.length) {
+    const gStr  = grapes ? `Cépage${grapes.includes(',') ? 's' : ''} : ${trunc(grapes, 40)}` : '';
+    const rStr  = region ? region : '';
+    if (gStr) {
+      txt(doc, gStr, TX_X, ty, { font: 'Helvetica-Bold', size: 8, color: C.mustard });
+      if (rStr) {
+        const gW = doc.widthOfString(gStr, { font: 'Helvetica-Bold', fontSize: 8 } as any);
+        txt(doc, `  |  ${rStr}`, TX_X + gW, ty, { font: 'Helvetica-Oblique', size: 8, color: C.textMut });
+      }
+    } else if (rStr) {
+      txt(doc, rStr, TX_X, ty, { font: 'Helvetica-Oblique', size: 8, color: C.textMut });
+    }
+    ty += 12;
   }
 
-  // Row 4: Grapes
-  const grapes = (wine.grapes as string[] | null) || [];
-  if (grapes.length) {
-    text(doc, trunc(grapes.join(', '), 72), TX_X, ty, { font: 'Helvetica-Oblique', size: 6.5, color: C.muted, width: TX_W, ellipsis: true });
-    ty += 6.5 * 1.35;
+  // Row 3: Appellation
+  const appellation = wine.appellation || '';
+  if (appellation) {
+    txt(doc, trunc(appellation, 70), TX_X, ty, { size: 7.5, color: C.textSec });
+    ty += 10;
   }
 
-  // Row 5: Description (truncated, one line)
+  // Row 4: Description (italic, max 2 lines)
   const desc = wine.description || wine.palate || '';
-  if (desc && ty < y + CARD_H - 3 * MM) {
-    text(doc, trunc(desc, 110), TX_X, ty, { size: 6, color: '#5C5C6E', width: TX_W, ellipsis: true });
-    ty += 6 * 1.35;
+  if (desc) {
+    txt(doc, trunc(desc, 140), TX_X, ty, {
+      font: 'Helvetica-Oblique', size: 8, color: C.textSec, width: TX_W, lineBreak: true, ellipsis: true,
+    });
+    ty += desc.length > 80 ? 22 : 12;
   }
 
-  // Row 6: Service info (temp · qty · drink window)
-  const svc: string[] = [];
-  if (wine.serving_temp_min && wine.serving_temp_max) svc.push(`${wine.serving_temp_min}–${wine.serving_temp_max} °C`);
-  const qty = wine.quantity;
-  if (qty) svc.push(`${qty} btl`);
-  if (wine.drink_from && wine.drink_until) svc.push(`${wine.drink_from}–${wine.drink_until}`);
-  else if (wine.drink_until) svc.push(`≤ ${wine.drink_until}`);
-  if (wine.decanting) svc.push('décanté');
-  if (svc.length && ty < y + CARD_H - 2 * MM) {
-    text(doc, svc.join('  ·  '), TX_X, ty, { size: 6, color: C.muted, width: TX_W, ellipsis: true });
+  // Row 5: Badges
+  let bx = TX_X;
+  const by = Math.min(ty, y + CARD_H - padV - 15);
+
+  // Type badge
+  if (wine.type) {
+    const bc = typeBadge(wine.type);
+    bx += badge(doc, wine.type, bx, by, bc.bg, bc.fg);
   }
 
-  // Bottom separator line
-  line(doc, ML, y + CARD_H, ML + CW, y + CARD_H, C.divider);
+  // Drink status badge
+  const ds = drinkStatus(wine);
+  if (ds) bx += badge(doc, ds.label, bx, by, ds.badge.bg, ds.badge.fg);
+
+  // Awards
+  const awards = (wine.awards as Array<{ name: string }> | null) || [];
+  if (awards.length) {
+    txt(doc, `★ ${awards[0].name}`, TX_X, by - 12, { size: 6.5, color: C.mustard });
+  }
+
+  // Separator
+  drawLine(doc, ML, y + CARD_H, ML + CW, y + CARD_H, C.divider);
 }
 
-function drawPlaceholder(doc: PDFKit.PDFDocument, x: number, y: number, col: string) {
-  rect(doc, x, y, PH_W, PH_H, C.surfaceAlt);
-  // Thin colored border
-  doc.save().rect(x, y, PH_W, PH_H).strokeColor(hexRgb(col)).lineWidth(0.5).stroke().restore();
-  text(doc, '?', x, y + PH_H / 2 - 8, { size: 16, color: C.dim, width: PH_W, align: 'center' });
+function drawPhotoPh(doc: PDFKit.PDFDocument, x: number, y: number, w: number, h: number) {
+  fillRect(doc, x, y, w, h, C.surface);
+  doc.save().rect(x, y, w, h).strokeColor(hexRgb(C.divider)).lineWidth(0.5).stroke().restore();
+  txt(doc, '?', x, y + h / 2 - 10, { size: 18, color: C.divider, width: w, align: 'center' });
 }
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 const TYPE_ORDER = ['rouge', 'blanc', 'rosé', 'rose', 'champagne', 'mousseux',
-                    'pétillant', 'moelleux', 'fortifié', 'spiritueux'];
+                    'pétillant', 'moelleux', 'fortifié', 'spiritueux', 'autre'];
 
 export async function pdfRoutes(app: FastifyInstance) {
   app.get('/api/pdf/wine-list', async (req, reply) => {
@@ -257,9 +310,8 @@ export async function pdfRoutes(app: FastifyInstance) {
       .where(eq(wines.importStatus, 'available'))
       .orderBy(wines.type, wines.region, wines.appellation, wines.vintage, wines.name);
 
-    if (!allWines.length) {
+    if (!allWines.length)
       return reply.status(404).send({ error: 'Aucun vin disponible' });
-    }
 
     // Group by type
     const byType = new Map<string, typeof allWines>();
@@ -268,8 +320,7 @@ export async function pdfRoutes(app: FastifyInstance) {
       if (!byType.has(t)) byType.set(t, []);
       byType.get(t)!.push(w);
     }
-
-    const seen   = new Set<string>();
+    const seen = new Set<string>();
     const ordered = [...TYPE_ORDER, ...byType.keys()].filter(t => {
       if (seen.has(t) || !byType.has(t)) return false;
       seen.add(t); return true;
@@ -287,10 +338,10 @@ export async function pdfRoutes(app: FastifyInstance) {
       doc.addPage();
       pageNum++;
       drawChrome(doc, caveTitle, allWines.length, pageNum);
-      curY = HEADER_H + 3 * MM;
+      curY = HEADER_H + 4;
     }
 
-    function needsSpace(h: number) {
+    function need(h: number) {
       if (curY + h > A4H - FOOTER_H) newPage();
     }
 
@@ -298,20 +349,16 @@ export async function pdfRoutes(app: FastifyInstance) {
 
     for (const wineType of ordered) {
       const list = byType.get(wineType)!;
-
-      // Section header: keep it with at least 2 cards
-      needsSpace(SEC_H + 2 * (CARD_H + CARD_GAP));
+      need(SECTION_H + CARD_H);
       drawSection(doc, wineType, curY);
-      curY += SEC_H + 1.5 * MM;
+      curY += SECTION_H;
 
-      let alt = false;
       for (const wine of list) {
-        needsSpace(CARD_H + CARD_GAP);
-        drawCard(doc, wine as Record<string, any>, curY, photosPath, alt);
-        curY += CARD_H + CARD_GAP;
-        alt   = !alt;
+        need(CARD_H);
+        drawCard(doc, wine as Record<string, any>, curY, photosPath);
+        curY += CARD_H;
       }
-      curY += 2 * MM; // extra space after each section
+      curY += 8;
     }
 
     doc.end();
