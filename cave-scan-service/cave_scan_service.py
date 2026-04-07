@@ -530,9 +530,10 @@ def analyze_with_ollama(jpeg_paths: list[Path]) -> Optional[dict]:
         {
             "role": "system",
             "content": (
-                "You are a JSON-only output assistant. "
-                "NEVER output reasoning, thinking, explanations, or any text before or after the JSON. "
-                "Your response MUST start with '{' and end with '}'. Nothing else."
+                "Tu es un assistant qui répond UNIQUEMENT en JSON. "
+                "Tu rédiges TOUJOURS en FRANÇAIS : descriptions, arômes, accords, notes, tous les textes sans exception. "
+                "Ne produis jamais de raisonnement, d'explication, ni de texte hors du JSON. "
+                "Ta réponse DOIT commencer par '{' et se terminer par '}'. Rien d'autre."
             ),
         },
         {
