@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Wine, Clock, TrendingUp, AlertCircle, Settings, Sparkles, History, GlassWater, Plus, CheckCircle } from 'lucide-react';
+import { Wine, Clock, TrendingUp, AlertCircle, Settings, History, GlassWater, Plus, CheckCircle } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { WinePhoto } from '../components/ui/WinePhoto';

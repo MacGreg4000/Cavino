@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Wine } from 'lucide-react';
 import { WinePhoto } from '../components/ui/WinePhoto';
 import { PageHeader } from '../components/layout/PageHeader';
@@ -48,7 +48,6 @@ function WineListCard({ wine }: { wine: WineType }) {
 
 export function DrinkNow() {
   const { wines, fetchWines } = useWineStore();
-  const navigate = useNavigate();
 
   useEffect(() => {
     fetchWines();
@@ -64,7 +63,7 @@ export function DrinkNow() {
       <PageHeader
         title="À boire maintenant"
         subtitle={`${drinkNow.length} bouteille${drinkNow.length > 1 ? 's' : ''}`}
-        onBack={() => navigate('/')}
+        back
       />
 
       <div className="px-4 pb-6 max-w-lg mx-auto">
@@ -73,7 +72,7 @@ export function DrinkNow() {
             <EmptyState
               title="Aucune bouteille à boire maintenant"
               description="Profitez de votre cave en attendant !"
-              icon={Wine}
+              icon={<Wine size={40} />}
             />
           </div>
         ) : (
