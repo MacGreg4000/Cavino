@@ -37,8 +37,9 @@ export function AddWine() {
     <div>
       <PageHeader title="Ajouter un vin" back />
 
-      <div className="px-4 pt-8 max-w-lg mx-auto space-y-4 pb-8">
-        <p className="text-sm text-text-secondary mb-4">Comment veux-tu ajouter cette bouteille ?</p>
+      <div className="px-4 pt-10 max-w-lg mx-auto pb-10">
+        <div className="flex flex-col gap-8">
+        <p className="text-sm text-text-secondary mb-2">Comment veux-tu ajouter cette bouteille ?</p>
 
         {MODES.map(({ to, icon: Icon, title, description, accent, border, iconBg }) => (
           <Link key={to} to={to}>
@@ -54,6 +55,7 @@ export function AddWine() {
             </div>
           </Link>
         ))}
+        </div>
       </div>
     </div>
   );

@@ -539,7 +539,12 @@ def analyze_with_ollama(jpeg_paths: list[Path]) -> Optional[dict]:
         {
             "role": "user",
             # /no_think en tête du message user = méthode officielle qwen3 pour désactiver le thinking
-            "content": "/no_think\n" + prompt,
+            "content": (
+                "/no_think\n"
+                "⚠️ LANGUE OBLIGATOIRE : Tous les textes (description, palate, style, agingNotes, "
+                "arômes, accords, occasions, glassType) DOIVENT être rédigés en FRANÇAIS. "
+                "Ne jamais utiliser l'anglais, même partiellement.\n\n"
+            ) + prompt,
             "images": images_b64,
         },
     ]
