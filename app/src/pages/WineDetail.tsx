@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Thermometer, Clock, GlassWater, Grape, MapPin, Award, Trash2,
-  QrCode, Copy, Check, UtensilsCrossed, ExternalLink, Maximize2, X, PencilLine, Wine as WineIcon
+  QrCode, Copy, Check, UtensilsCrossed, ExternalLink, Maximize2, X, PencilLine, Wine as WineIcon, Camera
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { PageHeader } from '../components/layout/PageHeader';
@@ -317,8 +317,10 @@ export function WineDetail() {
   const [editQuantity, setEditQuantity] = useState(1);
   const [loading, setLoading] = useState(false);
   const [slotLoading, setSlotLoading] = useState(false);
+  const [photoUploading, setPhotoUploading] = useState(false);
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
   const [selectedLocationId, setSelectedLocationId] = useState<string>('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const found = [...wines, ...pending].find((w) => w.id === id);
@@ -410,21 +412,75 @@ export function WineDetail() {
     setLoading(false);
   };
 
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPhotoUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const { apiFetch } = await import('../lib/api');
+      const res = await apiFetch(`/api/wines/${wine.id}/photo`, {
+        method: 'POST',
+        body: formData,
+        rawBody: true,
+      });
+      if (!res.ok) throw new Error();
+      const updated = await res.json();
+      setWine(updated);
+      toast('success', 'Photo mise à jour');
+    } catch {
+      toast('error', 'Erreur lors du téléchargement');
+    }
+    setPhotoUploading(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   return (
     <div>
       <PageHeader title={wine.name} back />
 
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handlePhotoChange}
+      />
+
       {/* Hero photo */}
       {wine.photoUrl ? (
-        <div className="relative h-72 cursor-pointer group" onClick={() => setShowPhoto(true)}>
-          <WinePhoto src={wine.photoUrl} alt={wine.name} className="h-full w-full" />
-          <div className="absolute inset-0 bg-gradient-to-t from-bg via-bg/50 to-transparent" />
-          <div className="absolute top-3 right-3 bg-black/50 rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-            <Maximize2 size={16} className="text-white" />
+        <div className="relative h-72 group">
+          <div className="cursor-pointer h-full" onClick={() => setShowPhoto(true)}>
+            <WinePhoto src={wine.photoUrl} alt={wine.name} className="h-full w-full" />
+            <div className="absolute inset-0 bg-gradient-to-t from-bg via-bg/50 to-transparent" />
+            <div className="absolute top-3 right-3 bg-black/50 rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+              <Maximize2 size={16} className="text-white" />
+            </div>
           </div>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={photoUploading}
+            className="absolute bottom-3 right-3 bg-black/60 hover:bg-black/80 rounded-full p-2 transition-colors"
+            title="Changer la photo"
+          >
+            <Camera size={16} className={photoUploading ? 'text-text-muted animate-pulse' : 'text-white'} />
+          </button>
         </div>
       ) : (
-        <div className={`h-40 bg-gradient-to-b ${typeHeroBg(wine.type)}`} />
+        <div className={`relative h-40 bg-gradient-to-b ${typeHeroBg(wine.type)}`}>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={photoUploading}
+            className="absolute bottom-3 right-3 flex items-center gap-1.5 bg-surface/80 hover:bg-surface border border-border rounded-full px-3 py-1.5 text-xs text-text-secondary transition-colors"
+          >
+            <Camera size={14} className={photoUploading ? 'animate-pulse' : ''} />
+            {photoUploading ? 'Envoi…' : 'Ajouter une photo'}
+          </button>
+        </div>
       )}
 
       <div className="px-4 max-w-lg mx-auto space-y-3 pb-8">
