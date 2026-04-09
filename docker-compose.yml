@@ -64,7 +64,7 @@ services:
       POSTGRES_USER: cave
       PGPASSWORD: ${DB_PASSWORD:-caveau2024}
     volumes:
-      - cave_backups:/backups
+      - ./data/backups:/backups
       - ./backup.sh:/backup.sh:ro
     entrypoint: >
       sh -c "while true; do
@@ -75,4 +75,3 @@ services:
 volumes:
   postgres_data:
   wine_photos:
-  cave_backups:
