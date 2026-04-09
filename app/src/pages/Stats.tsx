@@ -16,6 +16,18 @@ interface StatsData {
   byRegion: Array<{ region: string; count: number; totalQuantity: string }>;
 }
 
+const TYPE_FR: Record<string, string> = {
+  red: 'rouge', rouge: 'rouge',
+  white: 'blanc', blanc: 'blanc',
+  rosé: 'rosé', rose: 'rosé',
+  sparkling: 'effervescent', effervescent: 'effervescent',
+  champagne: 'champagne',
+  sweet: 'moelleux', moelleux: 'moelleux',
+  fortified: 'liquoreux', liquoreux: 'liquoreux',
+};
+
+const toFr = (type: string) => TYPE_FR[type?.toLowerCase()] ?? type?.toLowerCase() ?? 'autre';
+
 const TYPE_COLORS: Record<string, string> = {
   rouge: '#A52828',
   blanc: '#F0DDB0',
@@ -64,9 +76,9 @@ export function Stats() {
   const pieData = stats.byType
     .filter((t) => t.type)
     .map((t) => ({
-      name: t.type,
+      name: toFr(t.type),
       value: parseInt(t.totalQuantity) || t.count,
-      color: TYPE_COLORS[t.type?.toLowerCase()] || '#5C4F44',
+      color: TYPE_COLORS[toFr(t.type)] || '#5C4F44',
     }));
 
   const regionData = stats.byRegion
@@ -188,15 +200,16 @@ export function Stats() {
                 const total = stats.totalBottles || 1;
                 const qty = parseInt(t.totalQuantity) || t.count;
                 const pct = Math.round((qty / total) * 100);
+                const fr = toFr(t.type);
                 return (
                   <div key={t.type}>
                     <div className="flex justify-between text-sm mb-1">
-                      <span className="text-text capitalize">{t.type || 'Autre'}</span>
+                      <span className="text-text capitalize">{fr || 'Autre'}</span>
                       <span className="text-text-secondary font-mono text-xs">{qty} ({pct}%)</span>
                     </div>
                     <div className="h-2 bg-surface-hover rounded-full overflow-hidden">
                       <div
-                        className={`h-full rounded-full transition-all ${BAR_TYPE_COLORS[t.type?.toLowerCase()] || 'bg-text-muted'}`}
+                        className={`h-full rounded-full transition-all ${BAR_TYPE_COLORS[fr] || 'bg-text-muted'}`}
                         style={{ width: `${pct}%` }}
                       />
                     </div>
