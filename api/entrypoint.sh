@@ -1,4 +1,5 @@
 #!/bin/sh
+set -e
 echo "🔄 Syncing database schema..."
 npx drizzle-kit push --force
 echo "✅ Database ready"
