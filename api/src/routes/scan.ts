@@ -42,6 +42,6 @@ export async function scanRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'La photo recto est requise' });
     }
 
-    return { ok: true, verso: versoSaved };
+    return { ok: true, scanId: basename, verso: versoSaved };
   });
 }

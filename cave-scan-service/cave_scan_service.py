@@ -38,10 +38,11 @@ SEARXNG_URL  = os.getenv('SEARXNG_URL',  'http://macciolupo.tplinkdns.com:8888')
 CAVE_BASE    = Path(os.getenv('CAVE_BASE_DIR', '/data/cave'))
 SETTLE       = float(os.getenv('SETTLE_DELAY', '3.0'))
 
-SOURCE = CAVE_BASE / 'A analyser'
-DEST   = CAVE_BASE / 'Prêt à être importé'
-REF    = CAVE_BASE / 'importé'
-TEMP   = CAVE_BASE / '.previews'
+SOURCE   = CAVE_BASE / 'A analyser'
+DEST     = CAVE_BASE / 'Prêt à être importé'
+REF      = CAVE_BASE / 'importé'
+TEMP     = CAVE_BASE / '.previews'
+PROGRESS = CAVE_BASE / '.progress'
 
 IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif', '.tiff', '.bmp'}
 PHOTO_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp'}
@@ -880,14 +881,18 @@ def process_group(
     Returns (success, label, confidence, photo_info, basename).
     On failure, originals are NOT deleted.
     """
+    scan_id = _extract_scan_id(photos)
     names = ', '.join(p.name for p in photos)
     log.info(f"--- Début traitement: {names}")
+    _write_progress(scan_id, 'start', f"Démarrage — {len(photos)} photo(s) détectée(s)")
 
     # Convert to JPEG
+    _write_progress(scan_id, 'convert', "Conversion des images…")
     jpegs: list[Path] = []
     for p in photos:
         if p.suffix.lower() in ('.heic', '.heif') and not HEIC_SUPPORTED:
             log.error(f"HEIC non supporté (pillow-heif manquant): {p.name}")
+            _write_progress(scan_id, 'convert', f"Format HEIC non supporté : {p.name}", 'error')
             return False, p.name, 'low', '', ''
         j = convert_to_jpeg(p)
         if j:
@@ -895,15 +900,22 @@ def process_group(
 
     if not jpegs:
         log.error(f"Aucune image convertible: {names}")
+        _write_progress(scan_id, 'convert', "Aucune image convertible", 'error')
         return False, names, 'low', '', ''
+
+    _write_progress(scan_id, 'convert', f"{len(jpegs)} image(s) convertie(s)")
 
     # Analyze with Ollama
     log.info(f"Envoi à Ollama ({len(jpegs)} image(s))...")
+    _write_progress(scan_id, 'ollama', f"Envoi au modèle IA ({OLLAMA_MODEL})…")
     wine_data = analyze_with_ollama(jpegs)
 
     if wine_data is None:
         _cleanup_temp(jpegs)
+        _write_progress(scan_id, 'ollama', "Le modèle n'a pas retourné de résultat valide", 'error')
         return False, names, 'low', '', ''
+
+    _write_progress(scan_id, 'ollama', "Analyse IA terminée")
 
     # Generate basename
     basename = make_basename(wine_data, today)
@@ -916,10 +928,19 @@ def process_group(
     used_basenames.add(basename)
 
     # Validate & fix JSON
+    _write_progress(scan_id, 'validate', "Validation et correction du JSON…")
     wine_data = validate_and_fix(wine_data, basename)
     confidence = wine_data.get('meta', {}).get('confidence', 'medium')
+    identity = wine_data.get('identity', {})
+    wine_label = ' '.join(filter(None, [
+        identity.get('domain', ''),
+        identity.get('name', ''),
+        str(identity.get('vintage', '') or ''),
+    ])).strip() or names
+    _write_progress(scan_id, 'validate', f"Confiance {confidence} — {wine_label}")
 
     # Search official photo
+    _write_progress(scan_id, 'photo', "Recherche de la photo officielle…")
     photo_result = search_official_photo(wine_data)
 
     # Write output files
@@ -937,7 +958,9 @@ def process_group(
             f.write(photo_bytes)
         photo_info = f"🖼️  officielle → {photo_path.name}"
         log.info(f"Photo officielle écrite: {photo_path.name}")
+        _write_progress(scan_id, 'photo', "Photo officielle trouvée")
     else:
+        _write_progress(scan_id, 'photo', "Aucune photo officielle — utilisation du scan", 'warning')
         # Fallback : utiliser la photo de scan (premier JPEG converti)
         if jpegs:
             fallback_src = jpegs[0]
@@ -969,14 +992,9 @@ def process_group(
 
     _cleanup_temp(jpegs)
 
-    identity = wine_data.get('identity', {})
-    label = ' '.join(filter(None, [
-        identity.get('domain', ''),
-        identity.get('name', ''),
-        str(identity.get('vintage', '') or ''),
-    ])).strip() or names
-
+    label = wine_label
     log.info(f"--- Fin traitement: {basename}")
+    _write_progress(scan_id, 'done', f"Terminé — {wine_label}")
     return True, label, confidence, photo_info, basename
 
 
@@ -986,6 +1004,34 @@ def _cleanup_temp(jpegs: list[Path]):
             j.unlink()
         except Exception:
             pass
+
+
+def _extract_scan_id(photos: list[Path]) -> Optional[str]:
+    """Extrait le scanId (ex: 'scan_2026-04-10_a1b2c3d4') depuis les noms de fichiers."""
+    for p in photos:
+        m = re.match(r'^(scan_\d{4}-\d{2}-\d{2}_[a-f0-9]+)', p.stem)
+        if m:
+            return m.group(1)
+    return None
+
+
+def _write_progress(scan_id: Optional[str], stage: str, message: str, level: str = 'info') -> None:
+    """Ajoute une ligne JSONL dans /inbox/.progress/{scanId}.jsonl."""
+    if not scan_id:
+        return
+    PROGRESS.mkdir(parents=True, exist_ok=True)
+    import datetime
+    line = json.dumps({
+        'ts': datetime.datetime.utcnow().isoformat() + 'Z',
+        'stage': stage,
+        'message': message,
+        'level': level,
+    }, ensure_ascii=False)
+    try:
+        with open(PROGRESS / f"{scan_id}.jsonl", 'a', encoding='utf-8') as f:
+            f.write(line + '\n')
+    except Exception as e:
+        log.warning(f"Impossible d'écrire le progrès pour {scan_id}: {e}")
 
 # ─── Batch Processing ─────────────────────────────────────────────────────────────
 

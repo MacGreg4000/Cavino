@@ -7,6 +7,8 @@ export function useWebSocket() {
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const addPendingFromWs = useWineStore((s) => s.addPendingFromWs);
   const setScanResult = useWineStore((s) => s.setScanResult);
+  const addScanProgress = useWineStore((s) => s.addScanProgress);
+  const setActiveScanError = useWineStore((s) => s.setActiveScanError);
   const { toast } = useToast();
   const attemptsRef = useRef(0);
 
@@ -25,10 +27,17 @@ export function useWebSocket() {
           const data = JSON.parse(event.data);
           if (data.type === 'WINE_PENDING') {
             addPendingFromWs(data.wine);
-            // setScanResult is called inside addPendingFromWs via store
           } else if (data.type === 'IMPORT_ERROR') {
             setScanResult({ status: 'error', message: data.error || 'Erreur inconnue' });
+            setActiveScanError();
             toast('error', `Erreur d'analyse : ${data.error}`);
+          } else if (data.type === 'SCAN_PROGRESS') {
+            addScanProgress(data.scanId, {
+              ts: data.ts,
+              stage: data.stage,
+              message: data.message,
+              level: data.level ?? 'info',
+            });
           }
         } catch {}
       };
@@ -46,5 +55,5 @@ export function useWebSocket() {
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
       wsRef.current?.close();
     };
-  }, [addPendingFromWs, setScanResult, toast]);
+  }, [addPendingFromWs, setScanResult, addScanProgress, setActiveScanError, toast]);
 }

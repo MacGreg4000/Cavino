@@ -1,30 +1,31 @@
-import chokidar from 'chokidar';
-import path from 'path';
-import fs from 'fs/promises';
-import { INBOX_PATH, processInboxJsonFile, scanInboxFolder } from './inbox-import.js';
+import chokidar from ‘chokidar’;
+import path from ‘path’;
+import fs from ‘fs/promises’;
+import { INBOX_PATH, processInboxJsonFile, scanInboxFolder } from ‘./inbox-import.js’;
+import { broadcast } from ‘./websocket.js’;
 
 function isJsonPath(filePath: string): boolean {
   const b = path.basename(filePath);
-  if (b.startsWith('._')) return false;
-  return b.toLowerCase().endsWith('.json');
+  if (b.startsWith(‘._’)) return false;
+  return b.toLowerCase().endsWith(‘.json’);
 }
 
 export function startWatcher() {
   Promise.all([
     fs.mkdir(INBOX_PATH, { recursive: true }),
-    fs.mkdir(process.env.PROCESSED_PATH || '/processed', { recursive: true }),
-    fs.mkdir(process.env.ERRORS_PATH || '/errors', { recursive: true }),
+    fs.mkdir(process.env.PROCESSED_PATH || ‘/processed’, { recursive: true }),
+    fs.mkdir(process.env.ERRORS_PATH || ‘/errors’, { recursive: true }),
   ]).catch(() => {});
 
-  const usePolling = process.env.CHOKIDAR_USEPOLLING !== 'false';
-  const pollInterval = parseInt(process.env.CHOKIDAR_INTERVAL_MS || '5000', 10);
+  const usePolling = process.env.CHOKIDAR_USEPOLLING !== ‘false’;
+  const pollInterval = parseInt(process.env.CHOKIDAR_INTERVAL_MS || ‘5000’, 10);
 
-  const scanReadyDir = path.join(INBOX_PATH, 'Prêt à être importé');
+  const scanReadyDir = path.join(INBOX_PATH, ‘Prêt à être importé’);
   fs.mkdir(scanReadyDir, { recursive: true }).catch(() => {});
 
   const watcher = chokidar.watch([
-    path.join(INBOX_PATH, '*.json'),
-    path.join(scanReadyDir, '*.json'),
+    path.join(INBOX_PATH, ‘*.json’),
+    path.join(scanReadyDir, ‘*.json’),
   ], {
     persistent: true,
     ignoreInitial: false,
@@ -46,32 +47,97 @@ export function startWatcher() {
       jsonPath,
       setTimeout(() => {
         debouncers.delete(jsonPath);
-        processInboxJsonFile(jsonPath).catch((e) => console.error('Watcher process error:', e));
+        processInboxJsonFile(jsonPath).catch((e) => console.error(‘Watcher process error:’, e));
       }, delayMs)
     );
   };
 
-  watcher.on('add', (jsonPath) => {
+  watcher.on(‘add’, (jsonPath) => {
     console.log(`📥 JSON add: ${path.basename(jsonPath)}`);
     scheduleProcess(jsonPath, 400);
   });
 
-  watcher.on('change', (jsonPath) => {
+  watcher.on(‘change’, (jsonPath) => {
     console.log(`📥 JSON change: ${path.basename(jsonPath)}`);
     scheduleProcess(jsonPath, 2500);
   });
 
   console.log(`👀 Watcher actif sur ${INBOX_PATH} (polling=${usePolling}, interval=${pollInterval}ms)`);
 
-  // Fichiers déjà présents + montages NAS : rescan périodique de secours
-  const periodicMs = parseInt(process.env.INBOX_PERIODIC_SCAN_MS || '60000', 10);
+  // ── Progress watcher : lit les fichiers .progress/{scanId}.jsonl ──────────────
+  const progressDir = path.join(INBOX_PATH, ‘.progress’);
+  fs.mkdir(progressDir, { recursive: true }).catch(() => {});
+
+  // Offset de lecture par fichier pour ne broadcaster que les nouvelles lignes
+  const progressOffsets = new Map<string, number>();
+
+  const broadcastNewProgressLines = async (filePath: string) => {
+    try {
+      const stat = await fs.stat(filePath);
+      const offset = progressOffsets.get(filePath) ?? 0;
+      if (stat.size <= offset) return;
+
+      const fh = await fs.open(filePath, ‘r’);
+      const newBytes = stat.size - offset;
+      const buf = Buffer.alloc(newBytes);
+      await fh.read(buf, 0, newBytes, offset);
+      await fh.close();
+      progressOffsets.set(filePath, stat.size);
+
+      const scanId = path.basename(filePath, ‘.jsonl’);
+      for (const rawLine of buf.toString(‘utf-8’).split(‘\n’)) {
+        const line = rawLine.trim();
+        if (!line) continue;
+        try {
+          const entry = JSON.parse(line);
+          broadcast({ type: ‘SCAN_PROGRESS’, scanId, ...entry });
+        } catch { /* ligne malformée */ }
+      }
+    } catch { /* fichier disparu */ }
+  };
+
+  const progressWatcher = chokidar.watch(path.join(progressDir, ‘*.jsonl’), {
+    persistent: true,
+    ignoreInitial: false,
+    usePolling,
+    interval: 2000,
+    awaitWriteFinish: false,
+  });
+
+  progressWatcher.on(‘add’, (filePath) => {
+    progressOffsets.set(filePath, 0);
+    broadcastNewProgressLines(filePath);
+  });
+  progressWatcher.on(‘change’, (filePath) => {
+    broadcastNewProgressLines(filePath);
+  });
+
+  // Nettoyage TTL : supprime les fichiers .jsonl de plus de 10 minutes
+  setInterval(async () => {
+    try {
+      const files = await fs.readdir(progressDir);
+      const now = Date.now();
+      for (const f of files) {
+        if (!f.endsWith(‘.jsonl’)) continue;
+        const fp = path.join(progressDir, f);
+        const stat = await fs.stat(fp).catch(() => null);
+        if (stat && now - stat.mtimeMs > 10 * 60 * 1000) {
+          await fs.unlink(fp).catch(() => {});
+          progressOffsets.delete(fp);
+        }
+      }
+    } catch {}
+  }, 60_000);
+
+  // ── Fichiers déjà présents + montages NAS : rescan périodique de secours ──────
+  const periodicMs = parseInt(process.env.INBOX_PERIODIC_SCAN_MS || ‘60000’, 10);
   if (periodicMs > 0) {
     setInterval(() => {
       scanInboxFolder()
         .then((r) => {
           if (r.imported > 0) console.log(`📂 Scan périodique: ${r.imported} import(s)`);
         })
-        .catch((e) => console.error('Periodic inbox scan:', e));
+        .catch((e) => console.error(‘Periodic inbox scan:’, e));
     }, periodicMs);
   }
 
@@ -83,7 +149,7 @@ export function startWatcher() {
           console.log(`📂 Scan démarrage: ${r.imported} OK, ${r.errors.length} erreur(s)`);
         }
       })
-      .catch((e) => console.error('Initial inbox scan:', e));
+      .catch((e) => console.error(‘Initial inbox scan:’, e));
   }, 8000);
 
   return watcher;

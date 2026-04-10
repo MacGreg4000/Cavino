@@ -65,6 +65,20 @@ export type ScanResult =
   | { status: 'success'; wine: Wine }
   | { status: 'error'; message: string };
 
+export interface ScanProgressEntry {
+  ts: string;
+  stage: string;
+  message: string;
+  level: 'info' | 'warning' | 'error';
+}
+
+export interface ActiveScan {
+  scanId: string;
+  startedAt: number;
+  logs: ScanProgressEntry[];
+  status: 'analyzing' | 'done' | 'error';
+}
+
 interface WineState {
   wines: Wine[];
   pending: Wine[];
@@ -72,6 +86,7 @@ interface WineState {
   loading: boolean;
   error: string | null;
   lastScanResult: ScanResult | null;
+  activeScan: ActiveScan | null;
 
   fetchWines: () => Promise<void>;
   fetchPending: () => Promise<void>;
@@ -82,6 +97,10 @@ interface WineState {
   deleteWine: (id: string) => Promise<void>;
   addPendingFromWs: (wine: Wine) => void;
   setScanResult: (result: ScanResult | null) => void;
+  setActiveScan: (scanId: string) => void;
+  addScanProgress: (scanId: string, entry: ScanProgressEntry) => void;
+  clearActiveScan: () => void;
+  setActiveScanError: () => void;
 }
 
 const API = '/api';
@@ -96,6 +115,7 @@ export const useWineStore = create<WineState>((set) => ({
   loading: false,
   error: null,
   lastScanResult: null,
+  activeScan: null,
 
   fetchWines: async () => {
     set({ loading: true, error: null });
@@ -201,8 +221,24 @@ export const useWineStore = create<WineState>((set) => ({
       pending: [wine, ...s.pending],
       pendingCount: s.pendingCount + 1,
       lastScanResult: { status: 'success', wine },
+      activeScan: s.activeScan ? { ...s.activeScan, status: 'done' } : null,
     }));
   },
 
   setScanResult: (result) => set({ lastScanResult: result }),
+
+  setActiveScan: (scanId) => set({
+    activeScan: { scanId, startedAt: Date.now(), logs: [], status: 'analyzing' },
+  }),
+
+  addScanProgress: (scanId, entry) => set((s) => {
+    if (!s.activeScan || s.activeScan.scanId !== scanId) return s;
+    return { activeScan: { ...s.activeScan, logs: [...s.activeScan.logs, entry] } };
+  }),
+
+  clearActiveScan: () => set({ activeScan: null }),
+
+  setActiveScanError: () => set((s) => ({
+    activeScan: s.activeScan ? { ...s.activeScan, status: 'error' } : null,
+  })),
 }));

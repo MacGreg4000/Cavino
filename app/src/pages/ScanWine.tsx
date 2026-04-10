@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Camera, X, RotateCcw, Sparkles, ImagePlus, AlertCircle, Images, CheckCircle, Clock, ChevronRight, RefreshCw } from 'lucide-react';
+import { Camera, X, RotateCcw, Sparkles, ImagePlus, AlertCircle, Images, CheckCircle, Clock, ChevronRight, RefreshCw, ChevronDown } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button } from '../components/ui/Button';
 import { useToast } from '../components/ui/Toast';
 import { apiFetch } from '../lib/api';
-import { useWineStore } from '../stores/wine';
+import { useWineStore, type ScanProgressEntry } from '../stores/wine';
 
 type PhotoSlot = { file: File; preview: string } | null;
 type ScanState = 'capture' | 'uploading' | 'analyzing' | 'done';
@@ -140,6 +140,58 @@ function StatusStep({
   );
 }
 
+// ─── ScanLogPanel ────────────────────────────────────────────────────────────
+
+function ScanLogPanel({ logs }: { logs: ScanProgressEntry[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (expanded) bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [logs, expanded]);
+
+  const levelColor = (level: string) => {
+    if (level === 'error') return 'text-danger';
+    if (level === 'warning') return 'text-warning';
+    return 'text-text-muted';
+  };
+
+  const stageIcon: Record<string, string> = {
+    start: '▶', convert: '⟳', ollama: '✦', validate: '✓', photo: '⊞', done: '●',
+  };
+
+  return (
+    <div className="border border-border rounded-[var(--radius-md)] overflow-hidden">
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full flex items-center justify-between px-3 py-2.5 bg-surface-hover text-xs text-text-secondary hover:bg-surface-active transition-colors"
+      >
+        <span className="flex items-center gap-2">
+          <RefreshCw size={11} className={logs.length > 0 && !expanded ? 'animate-spin' : ''} />
+          Détails — {logs.length} étape{logs.length !== 1 ? 's' : ''}
+        </span>
+        <ChevronDown size={14} className={`transition-transform ${expanded ? 'rotate-180' : ''}`} />
+      </button>
+      {expanded && (
+        <div className="bg-surface px-3 py-2 max-h-44 overflow-y-auto space-y-0.5">
+          {logs.length === 0 && (
+            <p className="text-[11px] text-text-muted italic py-1">En attente du service…</p>
+          )}
+          {logs.map((entry, i) => (
+            <div key={i} className="flex gap-2 text-[11px] leading-5 font-mono">
+              <span className="text-text-muted flex-shrink-0 w-3 text-center">
+                {stageIcon[entry.stage] ?? '·'}
+              </span>
+              <span className={levelColor(entry.level)}>{entry.message}</span>
+            </div>
+          ))}
+          <div ref={bottomRef} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── ScanWine ─────────────────────────────────────────────────────────────────
 
 export function ScanWine() {
@@ -147,6 +199,9 @@ export function ScanWine() {
 
   const lastScanResult = useWineStore((s) => s.lastScanResult);
   const setScanResult = useWineStore((s) => s.setScanResult);
+  const activeScan = useWineStore((s) => s.activeScan);
+  const setActiveScan = useWineStore((s) => s.setActiveScan);
+  const clearActiveScan = useWineStore((s) => s.clearActiveScan);
 
   const [recto, setRecto] = useState<PhotoSlot>(null);
   const [verso, setVerso] = useState<PhotoSlot>(null);
@@ -154,19 +209,30 @@ export function ScanWine() {
   const [elapsed, setElapsed] = useState(0);
   const startTimeRef = useRef<number>(0);
 
-  // Clear any previous scan result when mounting
+  // Restaurer l'état si on revient sur la page pendant une analyse en cours
   useEffect(() => {
-    setScanResult(null);
-  }, [setScanResult]);
+    if (activeScan?.status === 'analyzing' && scanState === 'capture') {
+      setScanState('analyzing');
+      startTimeRef.current = Date.now() - (Date.now() - activeScan.startedAt);
+    } else if (activeScan?.status === 'done' && scanState === 'analyzing') {
+      setScanState('done');
+    } else if (activeScan?.status === 'error' && scanState === 'analyzing') {
+      setScanState('done');
+    }
+  }, [activeScan?.status]);
+
+  // Clear scan result only on first mount (pas si on revient avec un scan actif)
+  useEffect(() => {
+    if (!activeScan) setScanResult(null);
+  }, []);
 
   // Elapsed timer + timeout while analyzing
   useEffect(() => {
     if (scanState !== 'analyzing') return;
-    startTimeRef.current = Date.now();
+    if (!startTimeRef.current) startTimeRef.current = Date.now();
     const interval = setInterval(() => {
       const secs = Math.floor((Date.now() - startTimeRef.current) / 1000);
       setElapsed(secs);
-      // Timeout après 5 minutes — forcer l'état erreur
       if (secs >= 320) {
         setScanResult({ status: 'error', message: 'Délai dépassé — Ollama n\'a pas répondu à temps. Réessaie.' });
         setScanState('done');
@@ -189,19 +255,22 @@ export function ScanWine() {
 
     setScanResult(null);
     setScanState('uploading');
+    startTimeRef.current = Date.now();
 
     try {
       const formData = new FormData();
       formData.append('recto', recto.file);
       if (verso) formData.append('verso', verso.file);
 
-      await apiFetch('/api/scan/upload', {
+      const res = await apiFetch('/api/scan/upload', {
         method: 'POST',
         body: formData,
         rawBody: true,
       });
-
+      const { scanId } = await res.json();
+      setActiveScan(scanId);
       setScanState('analyzing');
+      toast('info', 'Analyse lancée — vous pouvez naviguer librement');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erreur lors de l\'envoi';
       toast('error', msg);
@@ -211,10 +280,12 @@ export function ScanWine() {
 
   const handleRetry = () => {
     setScanResult(null);
+    clearActiveScan();
     setScanState('capture');
     setRecto(null);
     setVerso(null);
     setElapsed(0);
+    startTimeRef.current = 0;
   };
 
   const formatElapsed = (s: number) => {
@@ -259,10 +330,11 @@ export function ScanWine() {
   const uploadState = scanState === 'uploading' ? 'active' : 'done';
   const analyzeState = scanState === 'uploading' ? 'pending' : scanState === 'analyzing' ? 'active' : (lastScanResult?.status === 'error' ? 'error' : 'done');
   const resultState = scanState === 'done' ? (lastScanResult?.status === 'error' ? 'error' : 'done') : 'pending';
+  const scanLogs = activeScan?.logs ?? [];
 
   return (
     <div>
-      <PageHeader title="Analyse en cours" back={scanState === 'done'} />
+      <PageHeader title="Analyse en cours" back />
       <div className="px-4 pt-6 max-w-lg mx-auto pb-8 space-y-6">
 
         {/* Photos thumbnail */}
@@ -322,6 +394,11 @@ export function ScanWine() {
             state={resultState}
           />
         </div>
+
+        {/* Log panel */}
+        {(scanState === 'analyzing' || (scanState === 'done' && scanLogs.length > 0)) && (
+          <ScanLogPanel logs={scanLogs} />
+        )}
 
         {/* Durée typique */}
         {scanState === 'analyzing' && elapsed < 30 && (
