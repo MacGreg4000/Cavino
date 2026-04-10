@@ -2,8 +2,8 @@ import type { FastifyInstance } from 'fastify';
 
 const OLLAMA_URL   = process.env.OLLAMA_URL   || 'http://host.docker.internal:11434';
 const SEARXNG_URL  = process.env.SEARXNG_URL  || 'http://host.docker.internal:8888';
-const CHAT_MODEL   = process.env.CHAT_MODEL   || 'qwen3:8b';
-const VISION_MODEL = process.env.VISION_MODEL || 'qwen2.5vl:7b';
+const CHAT_MODEL   = process.env.CHAT_MODEL   || 'qwen3-vl:8b';
+const VISION_MODEL = process.env.VISION_MODEL || 'qwen3-vl:8b';
 
 // ─── SearXNG web search ───────────────────────────────────────────────────────
 
