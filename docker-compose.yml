@@ -17,6 +17,8 @@ services:
   cave-api:
     build: ./api
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
@@ -26,7 +28,8 @@ services:
       PROCESSED_PATH: /processed
       ERRORS_PATH: /errors
       PHOTOS_PATH: /photos
-      OLLAMA_URL: ${OLLAMA_URL:-http://macciolupo.tplinkdns.com:11434}
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      SEARXNG_URL: ${SEARXNG_URL:-http://host.docker.internal:8888}
       PORT: 3010
       JWT_SECRET: ${JWT_SECRET:-caveau_jwt_secret_change_me}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme}

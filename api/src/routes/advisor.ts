@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 
-const OLLAMA_URL   = process.env.OLLAMA_URL   || 'http://macciolupo.tplinkdns.com:11434';
-const SEARXNG_URL  = process.env.SEARXNG_URL  || 'http://macciolupo.tplinkdns.com:8888';
+const OLLAMA_URL   = process.env.OLLAMA_URL   || 'http://host.docker.internal:11434';
+const SEARXNG_URL  = process.env.SEARXNG_URL  || 'http://host.docker.internal:8888';
 const CHAT_MODEL   = process.env.CHAT_MODEL   || 'qwen3:8b';
 const VISION_MODEL = process.env.VISION_MODEL || 'qwen2.5vl:7b';
 
@@ -163,10 +163,18 @@ Réponds de façon naturelle et conversationnelle. Pas de markdown excessif.${se
       });
 
       if (!res.ok) {
-        return reply.status(502).send({ error: 'Ollama non disponible' });
+        const errText = await res.text().catch(() => '');
+        console.error(`[advisor] Ollama /api/chat HTTP ${res.status}: ${errText}`);
+        return reply.status(502).send({ error: `Ollama erreur ${res.status}` });
       }
 
-      const data = await res.json() as { message?: { content: string }; response?: string };
+      const data = await res.json() as { message?: { content: string }; response?: string; error?: string };
+
+      if (data.error) {
+        console.error(`[advisor] Ollama error field: ${data.error}`);
+        return reply.status(502).send({ error: data.error });
+      }
+
       const content = data.message?.content || data.response || '';
 
       // Supprimer les blocs <think>...</think> (qwen3)
@@ -177,8 +185,9 @@ Réponds de façon naturelle et conversationnelle. Pas de markdown excessif.${se
         sources: searchResults.length > 0 ? searchResults : undefined,
         model,
       };
-    } catch {
-      return reply.status(502).send({ error: 'Ollama non disponible ou timeout' });
+    } catch (err) {
+      console.error('[advisor] fetch error:', err);
+      return reply.status(502).send({ error: `Ollama non disponible ou timeout: ${err instanceof Error ? err.message : String(err)}` });
     }
   });
 }
