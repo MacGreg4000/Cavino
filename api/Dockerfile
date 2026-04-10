@@ -21,7 +21,7 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev && npm install drizzle-kit
 COPY --from=builder /app/dist ./dist
 COPY drizzle.config.ts ./
 COPY src/db/schema.ts ./src/db/schema.ts
