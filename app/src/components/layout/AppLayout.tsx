@@ -64,7 +64,7 @@ export function AppLayout() {
 
   return (
     <div className="flex-1 flex flex-col">
-      <main className="flex-1 pb-safe">
+      <main className="flex-1 flex flex-col overflow-hidden pb-safe">
         <Outlet />
       </main>
       <ScanProgressBanner />
