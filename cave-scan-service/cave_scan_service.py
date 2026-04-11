@@ -1140,6 +1140,12 @@ def _write_progress(scan_id: Optional[str], stage: str, message: str, level: str
 
 # ─── Batch Processing ─────────────────────────────────────────────────────────────
 
+# Global lock: ensures only ONE bottle is being analyzed at a time.
+# Ollama is single-threaded anyway; running parallel requests just causes
+# queuing at Ollama level while confusing the frontend progress display.
+_PROCESSING_LOCK = threading.Lock()
+
+
 def process_all_pending():
     """Process all images currently in SOURCE at startup."""
     files = [
@@ -1154,20 +1160,22 @@ def process_all_pending():
 
 
 def _run_batch(groups: list[list[Path]]):
-    """Process all groups and print summary report."""
+    """Process all groups sequentially, one at a time, under a global lock."""
     if not groups:
         return
 
-    today = date.today().isoformat()
-    used_basenames: set[str] = set()
     total_bottles = len(groups)
     total_photos  = sum(len(g) for g in groups)
     results: list[tuple] = []
 
-    for i, group in enumerate(groups, 1):
-        log.info(f"Bouteille {i}/{total_bottles}")
-        result = process_group(group, today, used_basenames)
-        results.append((i, *result))
+    with _PROCESSING_LOCK:
+        today = date.today().isoformat()
+        used_basenames: set[str] = set()
+
+        for i, group in enumerate(groups, 1):
+            log.info(f"Bouteille {i}/{total_bottles}")
+            result = process_group(group, today, used_basenames)
+            results.append((i, *result))
 
     # Summary report
     print('\n' + '━' * 52)
