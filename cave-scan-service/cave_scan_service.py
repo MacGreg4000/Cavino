@@ -41,7 +41,7 @@ SETTLE       = float(os.getenv('SETTLE_DELAY', '3.0'))
 SOURCE   = CAVE_BASE / 'A analyser'
 DEST     = CAVE_BASE / 'Prêt à être importé'
 REF      = CAVE_BASE / 'importé'
-TEMP     = CAVE_BASE / '.previews'
+TEMP     = Path('/tmp/cave_previews')   # local to container — never on a volume
 PROGRESS = CAVE_BASE / '.progress'
 
 IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif', '.tiff', '.bmp'}
@@ -1028,19 +1028,19 @@ def search_official_photo(wine: dict, scan_bytes: Optional[bytes]) -> Optional[t
 
     candidates.sort(key=lambda x: x[0], reverse=True)
 
-    if scan_bytes:
-        log.info(f"Validation visuelle de {len(candidates)} candidat(s)…")
-        for i, (ratio, data, ext) in enumerate(candidates):
-            if validate_photo_match(scan_bytes, data):
-                log.info(f"  ✓ Candidat {i+1} validé")
-                return data, ext
-            log.info(f"  ✗ Candidat {i+1} rejeté")
-        log.warning("SearXNG: aucun candidat validé — pas de photo")
+    if not scan_bytes:
+        # No scan image available for validation — refuse to pick blindly
+        log.warning("SearXNG: pas de scan pour validation visuelle — pas de photo")
         return None
-    else:
-        ratio, data, ext = candidates[0]
-        log.info(f"SearXNG: meilleur ratio {ratio:.2f} (sans validation)")
-        return data, ext
+
+    log.info(f"Validation visuelle de {len(candidates)} candidat(s)…")
+    for i, (ratio, data, ext) in enumerate(candidates):
+        if validate_photo_match(scan_bytes, data):
+            log.info(f"  ✓ Candidat {i+1} validé")
+            return data, ext
+        log.info(f"  ✗ Candidat {i+1} rejeté")
+    log.warning("SearXNG: aucun candidat validé — pas de photo")
+    return None
 
 # ─── Core Processing ──────────────────────────────────────────────────────────────
 
