@@ -143,21 +143,40 @@ export function startWatcher() {
     } catch { /* fichier disparu */ }
   };
 
-  const progressWatcher = chokidar.watch(path.join(progressDir, '*.jsonl'), {
+  // Watch the DIRECTORY (not a glob) — glob patterns don't work reliably
+  // with polling mode on Docker volumes
+  const progressWatcher = chokidar.watch(progressDir, {
     persistent: true,
     ignoreInitial: false,
     usePolling,
-    interval: 2000,
+    interval: 1000,
     awaitWriteFinish: false,
+    depth: 0,
   });
 
   progressWatcher.on('add', (filePath) => {
+    if (!filePath.endsWith('.jsonl')) return;
+    console.log(`📂 Progress file détecté: ${path.basename(filePath)}`);
     progressOffsets.set(filePath, 0);
     broadcastNewProgressLines(filePath);
   });
   progressWatcher.on('change', (filePath) => {
+    if (!filePath.endsWith('.jsonl')) return;
     broadcastNewProgressLines(filePath);
   });
+
+  // Polling de secours : relit tous les fichiers .jsonl actifs toutes les 3s
+  // Garantit que les events chokidar ratés n'empêchent pas le broadcast
+  setInterval(async () => {
+    try {
+      const files = await fs.readdir(progressDir);
+      for (const f of files) {
+        if (!f.endsWith('.jsonl')) continue;
+        const fp = path.join(progressDir, f);
+        await broadcastNewProgressLines(fp);
+      }
+    } catch { /* dir not ready */ }
+  }, 3000);
 
   // Nettoyage TTL : supprime les fichiers .jsonl de plus de 10 minutes
   setInterval(async () => {
