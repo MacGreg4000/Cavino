@@ -1,15 +1,23 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Sparkles, CheckCircle, AlertCircle, Clock, ChevronRight, X, ChevronDown, Trash2 } from 'lucide-react';
+import { Sparkles, CheckCircle, AlertCircle, Clock, ChevronRight, X, ChevronDown, Trash2, RefreshCw } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button } from '../components/ui/Button';
 import { useWineStore, type QueuedScan } from '../stores/wine';
 
 // ─── ScanCard ────────────────────────────────────────────────────────────────
 
-function ScanCard({ scan, onRemove }: { scan: QueuedScan; onRemove: () => void }) {
+const WARN_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes → afficher avertissement
+
+function ScanCard({ scan, onRemove, onMarkError }: { scan: QueuedScan; onRemove: () => void; onMarkError: () => void }) {
   const [logsOpen, setLogsOpen] = useState(false);
   const elapsed = Math.round((Date.now() - scan.startedAt) / 1000);
+
+  const lastActivity = scan.logs.length > 0
+    ? new Date(scan.logs[scan.logs.length - 1].ts).getTime()
+    : scan.startedAt;
+  const isStaleWarn = (scan.status === 'analyzing' || scan.status === 'uploading')
+    && (Date.now() - lastActivity > WARN_THRESHOLD_MS);
   const lastLog = scan.logs[scan.logs.length - 1];
 
   const statusIcon = {
@@ -20,7 +28,7 @@ function ScanCard({ scan, onRemove }: { scan: QueuedScan; onRemove: () => void }
   }[scan.status];
 
   const statusLabel = {
-    uploading: 'Envoi…',
+    uploading: 'En attente…',
     analyzing: 'Analyse IA en cours…',
     done: 'Terminé',
     error: 'Échec',
@@ -55,6 +63,7 @@ function ScanCard({ scan, onRemove }: { scan: QueuedScan; onRemove: () => void }
           <p className="text-[11px] text-text-muted font-mono">
             {scan.scanId.slice(-8)}
             {scan.status === 'analyzing' && ` · ${elapsed < 60 ? `${elapsed}s` : `${Math.floor(elapsed / 60)}m${elapsed % 60}s`}`}
+            {scan.status === 'uploading' && ' · en file'}
           </p>
         </div>
         {scan.status === 'done' && wineId && (
@@ -71,10 +80,15 @@ function ScanCard({ scan, onRemove }: { scan: QueuedScan; onRemove: () => void }
         )}
       </div>
 
-      {/* Progress bar (analyzing) */}
+      {/* Progress bar — only for the scan actually running */}
       {scan.status === 'analyzing' && (
         <div className="h-0.5 bg-surface-hover mx-4 mb-3 rounded-full overflow-hidden">
           <div className="h-full bg-accent-bright rounded-full animate-pulse" style={{ width: '60%' }} />
+        </div>
+      )}
+      {scan.status === 'uploading' && (
+        <div className="h-0.5 bg-surface-hover mx-4 mb-3 rounded-full overflow-hidden">
+          <div className="h-full bg-border rounded-full" style={{ width: '100%' }} />
         </div>
       )}
 
@@ -86,6 +100,19 @@ function ScanCard({ scan, onRemove }: { scan: QueuedScan; onRemove: () => void }
       {/* Error message */}
       {scan.status === 'error' && scan.result?.status === 'error' && (
         <p className="px-4 pb-3 text-xs text-danger">{scan.result.message}</p>
+      )}
+
+      {/* Stale warning */}
+      {isStaleWarn && (
+        <div className="mx-4 mb-3 flex items-center justify-between gap-2 rounded-lg bg-warning/10 border border-warning/20 px-3 py-2">
+          <p className="text-[11px] text-warning">Résultat attendu depuis +5 min — connexion perdue ?</p>
+          <button
+            onClick={onMarkError}
+            className="flex items-center gap-1 text-[11px] text-warning font-medium whitespace-nowrap hover:text-text transition-colors"
+          >
+            <RefreshCw size={11} /> Abandonner
+          </button>
+        </div>
       )}
 
       {/* Logs toggle */}
@@ -116,12 +143,36 @@ function ScanCard({ scan, onRemove }: { scan: QueuedScan; onRemove: () => void }
   );
 }
 
+const STALE_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes sans activité = scan perdu
+
 // ─── ScanQueue page ───────────────────────────────────────────────────────────
 
 export function ScanQueue() {
   const scanQueue = useWineStore((s) => s.scanQueue);
   const removeFromQueue = useWineStore((s) => s.removeFromQueue);
   const clearFinishedScans = useWineStore((s) => s.clearFinishedScans);
+  const markScanError = useWineStore((s) => s.markScanError);
+
+  // Tick every 30s to refresh elapsed times + detect stale scans
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => {
+      setTick((t) => t + 1);
+      // Auto-mark stale scans as error
+      const now = Date.now();
+      scanQueue.forEach((scan) => {
+        if ((scan.status === 'analyzing' || scan.status === 'uploading')) {
+          const lastActivity = scan.logs.length > 0
+            ? new Date(scan.logs[scan.logs.length - 1].ts).getTime()
+            : scan.startedAt;
+          if (now - lastActivity > STALE_THRESHOLD_MS) {
+            markScanError(scan.scanId);
+          }
+        }
+      });
+    }, 30_000);
+    return () => clearInterval(id);
+  }, [scanQueue, markScanError]);
 
   const analyzing = scanQueue.filter((s) => s.status === 'analyzing' || s.status === 'uploading');
   const finished = scanQueue.filter((s) => s.status === 'done' || s.status === 'error');
@@ -147,10 +198,12 @@ export function ScanQueue() {
         {analyzing.length > 0 && (
           <div className="space-y-3">
             <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">
-              En cours ({analyzing.length})
+              {analyzing.filter(s => s.status === 'analyzing').length > 0
+                ? `En cours · ${analyzing.filter(s => s.status === 'uploading').length} en attente`
+                : `En attente (${analyzing.length})`}
             </p>
             {analyzing.map((scan) => (
-              <ScanCard key={scan.scanId} scan={scan} onRemove={() => removeFromQueue(scan.scanId)} />
+              <ScanCard key={scan.scanId} scan={scan} onRemove={() => removeFromQueue(scan.scanId)} onMarkError={() => markScanError(scan.scanId)} />
             ))}
           </div>
         )}
@@ -167,7 +220,7 @@ export function ScanQueue() {
               </button>
             </div>
             {finished.map((scan) => (
-              <ScanCard key={scan.scanId} scan={scan} onRemove={() => removeFromQueue(scan.scanId)} />
+              <ScanCard key={scan.scanId} scan={scan} onRemove={() => removeFromQueue(scan.scanId)} onMarkError={() => markScanError(scan.scanId)} />
             ))}
           </div>
         )}
