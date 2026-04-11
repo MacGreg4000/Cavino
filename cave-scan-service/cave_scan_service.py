@@ -366,6 +366,8 @@ CONTEXTE PHOTOS : {photo_context}
 
 RÈGLE ABSOLUE ANTI-HALLUCINATION :
 - N'invente JAMAIS une donnée absente de l'étiquette. Si une information n'est pas lisible ou pas présente → null ou [].
+- RÈGLE CRITIQUE SUR LE NOM : Lis le texte EXACTEMENT tel qu'il est imprimé, caractère par caractère. Si tu n'es pas sûr d'un mot, indique le doute dans meta.notes et mets confidence = "low". NE JAMAIS inventer ou deviner un nom de cuvée, domaine ou appellation.
+- Si l'étiquette est illisible ou trop floue pour identifier le vin avec certitude → mets le texte le plus proche possible de ce que tu vois et confidence = "low".
 - "domain" = nom du domaine/château/producteur (ex: "Villa Canestrari"), PAS l'appellation.
 - "appellation" = l'appellation officielle (ex: "Amarone della Valpolicella DOCG").
 - "awards" = [] si aucune médaille n'est visible sur l'étiquette. NE PAS inventer de médailles.
@@ -394,7 +396,7 @@ SCHÉMA OBLIGATOIRE — tous les champs sont requis, champs inconnus → null, J
     "appellation": "string — APPELLATION OFFICIELLE avec mention légale (ex: Amarone della Valpolicella DOCG)",
     "vintage": integer_ou_null,
     "nonVintage": boolean,
-    "type": "red|white|rosé|champagne|crémant|sweet|fortified|sparkling",
+    "type": "rouge|blanc|rosé|champagne|crémant|moelleux|liquoreux|effervescent",
     "grapes": ["string"],
     "country": "string",
     "region": "string",

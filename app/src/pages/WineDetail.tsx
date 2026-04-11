@@ -20,6 +20,17 @@ import { BOTTLE_FORMATS, getBottleFormat, isStandardBottle } from '../lib/bottle
 
 const PUBLIC_BASE = import.meta.env.VITE_PUBLIC_BASE_URL || '';
 
+const TYPE_FR: Record<string, string> = {
+  red: 'rouge', rouge: 'rouge',
+  white: 'blanc', blanc: 'blanc',
+  rosé: 'rosé', rose: 'rosé',
+  sparkling: 'effervescent', effervescent: 'effervescent',
+  champagne: 'champagne', crémant: 'crémant',
+  sweet: 'moelleux', moelleux: 'moelleux',
+  fortified: 'liquoreux', liquoreux: 'liquoreux',
+};
+const toFr = (type?: string) => TYPE_FR[type?.toLowerCase() ?? ''] ?? type ?? '';
+
 function typeAccent(type?: string): string {
   const t = type?.toLowerCase() ?? '';
   if (t.includes('rouge') || t.includes('red')) return 'border-wine-red';
@@ -496,8 +507,8 @@ export function WineDetail() {
             </p>
           </div>
           <div className="flex items-center gap-2 mt-3 pl-4 flex-wrap">
-            <Badge variant={wine.type?.toLowerCase() === 'rouge' ? 'red' : wine.type?.toLowerCase() === 'blanc' ? 'white' : 'champagne'}>
-              {wine.type}
+            <Badge variant={toFr(wine.type) === 'rouge' ? 'red' : toFr(wine.type) === 'blanc' ? 'white' : 'champagne'}>
+              {toFr(wine.type)}
             </Badge>
             {wine.classification && <Badge variant="gold">{wine.classification}</Badge>}
             {wine.slotIds?.[0] ? (
