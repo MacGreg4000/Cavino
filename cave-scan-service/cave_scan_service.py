@@ -869,15 +869,18 @@ def search_official_photo(wine: dict, scan_jpegs: list[Path]) -> Optional[tuple[
     name    = identity.get('name', '') or ''
     vintage = identity.get('vintage', '') or ''
 
+    # Vivino-first strategy: target the most reliable wine photo databases
     queries = [
+        f"site:vivino.com {domain} {name} {vintage}",
+        f"site:vivino.com {domain} {name}",
+        f"site:wine-searcher.com {domain} {name} {vintage}",
+        f"{domain} {name} {vintage} vivino bottle",
         f"{domain} {name} {vintage} bottle wine",
-        f"{domain} {name} {vintage} bouteille",
-        f"{domain} {name} bottle official",
-        f"{domain} {name} wine searcher",
+        f"{domain} {name} bouteille vin",
     ]
 
-    # Collect all portrait-ratio candidates across queries (up to 8)
-    MAX_CANDIDATES = 8
+    # Collect all portrait-ratio candidates across queries (up to 10)
+    MAX_CANDIDATES = 10
     candidates: list[tuple[float, bytes, str]] = []  # (ratio, bytes, ext)
 
     for query in queries:
