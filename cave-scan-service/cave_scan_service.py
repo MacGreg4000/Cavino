@@ -370,7 +370,7 @@ RÈGLE ABSOLUE ANTI-HALLUCINATION :
 - "appellation" = l'appellation officielle (ex: "Amarone della Valpolicella DOCG").
 - "awards" = [] si aucune médaille n'est visible sur l'étiquette. NE PAS inventer de médailles.
 - "purchase.purchasePrice" = null si le prix n'est pas sur l'étiquette. NE PAS inventer de prix.
-- "purchase.estimatedValue" = estimation basée sur ta connaissance du marché (acceptable), sinon null.
+- "purchase.estimatedValue" = prix réel du marché basé sur ta connaissance de Vivino, Wine-Searcher, Vinatis, Millesima, iDealwine pour ce vin ET ce millésime précis. Donne un prix réaliste en euros. Si tu n'as pas de données fiables pour ce vin → null. NE JAMAIS inventer un prix arbitraire.
 - "purchase.source" = null si la source d'achat n'est pas connue. NE PAS inventer "Wine Merchant".
 - "classification" = la mention légale exacte visible (DOC, DOCG, AOC, AOP...), null si absente.
 - "village" = null si non mentionné (jamais "N/A").
@@ -476,7 +476,7 @@ CHAMPAGNES et CRÉMANTS — enrichissements obligatoires dans identity.mentions 
 Retourne UNIQUEMENT le JSON, rien d'autre."""
 
 
-def analyze_with_ollama(jpeg_paths: list[Path]) -> Optional[dict]:
+def analyze_with_ollama(jpeg_paths: list[Path], hint: Optional[str] = None) -> Optional[dict]:
     """Send images to Ollama vision model, return parsed wine dict or None."""
     today = date.today().isoformat()
 
@@ -545,6 +545,11 @@ def analyze_with_ollama(jpeg_paths: list[Path]) -> Optional[dict]:
                 "⚠️ LANGUE OBLIGATOIRE : Tous les textes (description, palate, style, agingNotes, "
                 "arômes, accords, occasions, glassType) DOIVENT être rédigés en FRANÇAIS. "
                 "Ne jamais utiliser l'anglais, même partiellement.\n\n"
+            ) + (
+                f"⚠️ INDICE UTILISATEUR (priorité absolue) : {hint}\n"
+                "Utilise cet indice pour corriger ou compléter ce que tu lis sur l'étiquette. "
+                "Si l'étiquette est illisible ou ambiguë, l'indice fait foi.\n\n"
+                if hint else ""
             ) + prompt,
             "images": images_b64,
         },
@@ -905,10 +910,27 @@ def process_group(
 
     _write_progress(scan_id, 'convert', f"{len(jpegs)} image(s) convertie(s)")
 
+    # Read optional hint file
+    hint: Optional[str] = None
+    hint_candidates = [p for p in photos if p.suffix == '.txt' and '_hint' in p.name]
+    if not hint_candidates:
+        # Also look in the same directory by scan_id pattern
+        hint_file = photos[0].parent / f"{scan_id}_hint.txt"
+        if hint_file.exists():
+            hint_candidates = [hint_file]
+    if hint_candidates:
+        try:
+            hint = hint_candidates[0].read_text(encoding='utf-8').strip() or None
+            if hint:
+                log.info(f"Indice utilisateur : {hint[:80]}")
+                _write_progress(scan_id, 'ollama', f"Indice : {hint[:60]}…" if len(hint) > 60 else f"Indice : {hint}")
+        except Exception as e:
+            log.warning(f"Impossible de lire le fichier hint : {e}")
+
     # Analyze with Ollama
     log.info(f"Envoi à Ollama ({len(jpegs)} image(s))...")
     _write_progress(scan_id, 'ollama', f"Envoi au modèle IA ({OLLAMA_MODEL})…")
-    wine_data = analyze_with_ollama(jpegs)
+    wine_data = analyze_with_ollama(jpegs, hint=hint)
 
     if wine_data is None:
         _cleanup_temp(jpegs)
@@ -989,6 +1011,14 @@ def process_group(
             log.info(f"Original supprimé: {p.name}")
         except Exception as e:
             log.warning(f"Impossible de supprimer {p.name}: {e}")
+    # Delete hint file if present
+    if scan_id:
+        hint_file = photos[0].parent / f"{scan_id}_hint.txt"
+        if hint_file.exists():
+            try:
+                hint_file.unlink()
+            except Exception:
+                pass
 
     _cleanup_temp(jpegs)
 

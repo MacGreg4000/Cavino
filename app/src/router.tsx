@@ -6,6 +6,7 @@ import { Login } from './pages/Login';
 import { Home } from './pages/Home';
 import { Cave } from './pages/Cave';
 import { WineDetail } from './pages/WineDetail';
+import { WineEdit } from './pages/WineEdit';
 import { PendingWines } from './pages/PendingWines';
 import { AddWine } from './pages/AddWine';
 import { AddWineManual } from './pages/AddWineManual';
@@ -48,6 +49,7 @@ export const router = createBrowserRouter([
           { path: '/drink-now', element: <DrinkNow /> },
           { path: '/cave', element: <Cave /> },
           { path: '/cave/:id', element: <WineDetail /> },
+          { path: '/cave/:id/edit', element: <WineEdit /> },
           { path: '/pending', element: <PendingWines /> },
           { path: '/add', element: <AddWine /> },
           { path: '/add/manual', element: <AddWineManual /> },

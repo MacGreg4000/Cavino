@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Thermometer, Clock, GlassWater, Grape, MapPin, Award, Trash2,
-  QrCode, Copy, Check, UtensilsCrossed, ExternalLink, Maximize2, X, PencilLine, Wine as WineIcon, Camera
+  QrCode, Copy, Check, UtensilsCrossed, ExternalLink, Maximize2, X, PencilLine, Wine as WineIcon, Camera, Pencil
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { PageHeader } from '../components/layout/PageHeader';
@@ -628,6 +628,9 @@ export function WineDetail() {
         <div className="flex gap-3 pt-2">
           <Button variant="primary" className="flex-1" onClick={() => setShowDrink(true)}>
             Déboucher
+          </Button>
+          <Button variant="ghost" onClick={() => navigate(`/cave/${wine.id}/edit`)}>
+            <Pencil size={16} />
           </Button>
           <Button variant="ghost" onClick={() => setShowDelete(true)}>
             <Trash2 size={16} />

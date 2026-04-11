@@ -140,7 +140,14 @@ export async function wineRoutes(app: FastifyInstance) {
     const updates: Record<string, unknown> = { ...body, updatedAt: new Date() };
 
     // Convert numeric fields to strings for Drizzle numeric columns
-    if (body.purchasePrice !== undefined) updates.purchasePrice = body.purchasePrice.toString();
+    const numericField = (key: string) => {
+      if (updates[key] !== undefined && updates[key] !== null)
+        updates[key] = String(updates[key]);
+    };
+    numericField('purchasePrice');
+    numericField('estimatedValue');
+    numericField('alcohol');
+    numericField('bottleSize');
 
     const [updated] = await db.update(wines)
       .set(updates)

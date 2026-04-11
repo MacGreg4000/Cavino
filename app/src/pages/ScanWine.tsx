@@ -205,6 +205,7 @@ export function ScanWine() {
 
   const [recto, setRecto] = useState<PhotoSlot>(null);
   const [verso, setVerso] = useState<PhotoSlot>(null);
+  const [hint, setHint] = useState('');
   const [scanState, setScanState] = useState<ScanState>('capture');
   const [elapsed, setElapsed] = useState(0);
   const startTimeRef = useRef<number>(0);
@@ -261,6 +262,7 @@ export function ScanWine() {
       const formData = new FormData();
       formData.append('recto', recto.file);
       if (verso) formData.append('verso', verso.file);
+      if (hint.trim()) formData.append('hint', hint.trim());
 
       const res = await apiFetch('/api/scan/upload', {
         method: 'POST',
@@ -309,6 +311,23 @@ export function ScanWine() {
           <div className="grid grid-cols-2 gap-3">
             <PhotoCapture label="Recto" photo={recto} onCapture={(f, p) => setRecto({ file: f, preview: p })} onRemove={() => setRecto(null)} required />
             <PhotoCapture label="Verso" photo={verso} onCapture={(f, p) => setVerso({ file: f, preview: p })} onRemove={() => setVerso(null)} />
+          </div>
+
+          {/* Hint field */}
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-text-secondary">
+              Indice <span className="text-text-muted font-normal">(optionnel)</span>
+            </label>
+            <textarea
+              value={hint}
+              onChange={(e) => setHint(e.target.value)}
+              placeholder="Ex : Zefiro, Primitivo di Manduria, 2020, environ 9€…"
+              rows={2}
+              className="w-full bg-surface-hover border border-border rounded-[var(--radius-md)] px-3 py-2 text-sm text-text placeholder:text-text-muted resize-none focus:outline-none focus:border-accent/50 transition-colors"
+            />
+            <p className="text-[11px] text-text-muted leading-relaxed">
+              Aide le modèle si l'étiquette est illisible : nom exact, millésime, domaine, appellation, prix indicatif…
+            </p>
           </div>
 
           {!recto && (

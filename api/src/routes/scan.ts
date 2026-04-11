@@ -17,6 +17,14 @@ export async function scanRoutes(app: FastifyInstance) {
     let versoSaved = false;
 
     for await (const part of parts) {
+      if (part.type === 'field' && part.fieldname === 'hint') {
+        const hintText = (part as unknown as { value: string }).value?.trim();
+        if (hintText) {
+          await fs.writeFile(path.join(scanDir, `${basename}_hint.txt`), hintText, 'utf8');
+        }
+        continue;
+      }
+
       if (part.type !== 'file') continue;
 
       const ext = path.extname(part.filename || '').toLowerCase() || '.jpg';
