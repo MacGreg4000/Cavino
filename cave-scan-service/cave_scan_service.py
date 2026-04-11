@@ -807,11 +807,62 @@ def download_and_score(url: str) -> tuple[Optional[bytes], float, str]:
         return None, 0.0, ''
 
 
-def search_official_photo(wine: dict) -> Optional[tuple[bytes, str]]:
+def validate_photo_match(scan_jpeg: Path, candidate_bytes: bytes) -> bool:
     """
-    Search for official bottle portrait via SearXNG.
+    Ask Ollama to visually confirm that candidate_bytes shows the same wine
+    as the label in scan_jpeg. Returns True if match, False otherwise.
+    """
+    try:
+        scan_b64 = image_to_base64(scan_jpeg)
+
+        # Re-encode candidate as JPEG at reduced quality to avoid huge payloads
+        img = Image.open(BytesIO(candidate_bytes)).convert('RGB')
+        buf = BytesIO()
+        img.save(buf, 'JPEG', quality=70)
+        candidate_b64 = base64.b64encode(buf.getvalue()).decode()
+    except Exception as e:
+        log.warning(f"validate_photo_match: erreur préparation images: {e}")
+        return False
+
+    payload = {
+        "model": OLLAMA_MODEL,
+        "messages": [{
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": (
+                        "Image 1 : photo d'une étiquette de bouteille de vin prise par l'utilisateur.\n"
+                        "Image 2 : photo de référence trouvée sur le web.\n\n"
+                        "Ces deux images montrent-elles le MÊME vin ?\n"
+                        "Compare : le nom du domaine/château, le millésime, la couleur et le design de l'étiquette.\n"
+                        "Réponds UNIQUEMENT par OUI ou NON, sans aucune explication."
+                    ),
+                },
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{scan_b64}"}},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{candidate_b64}"}},
+            ],
+        }],
+        "stream": False,
+        "options": {"temperature": 0, "num_predict": 5},
+    }
+
+    try:
+        resp = requests.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=45)
+        resp.raise_for_status()
+        answer = resp.json().get('message', {}).get('content', '').strip().upper()
+        log.debug(f"validate_photo_match réponse: '{answer}'")
+        return answer.startswith('OUI')
+    except Exception as e:
+        log.warning(f"validate_photo_match: erreur Ollama: {e}")
+        return False  # reject on error — better no photo than a wrong one
+
+
+def search_official_photo(wine: dict, scan_jpegs: list[Path]) -> Optional[tuple[bytes, str]]:
+    """
+    Search for official bottle portrait via SearXNG, then visually validate
+    each candidate with Ollama against the original scan.
     Returns (image_bytes, extension) or None.
-    Never uses the scan photo as fallback.
     """
     identity = wine.get('identity', {})
     domain  = identity.get('domain', '') or ''
@@ -825,10 +876,13 @@ def search_official_photo(wine: dict) -> Optional[tuple[bytes, str]]:
         f"{domain} {name} wine searcher",
     ]
 
-    best_ratio = 0.0
-    best_result: Optional[tuple[bytes, str]] = None
+    # Collect all portrait-ratio candidates across queries (up to 8)
+    MAX_CANDIDATES = 8
+    candidates: list[tuple[float, bytes, str]] = []  # (ratio, bytes, ext)
 
     for query in queries:
+        if len(candidates) >= MAX_CANDIDATES:
+            break
         q = query.strip()
         log.info(f"SearXNG: «{q}»")
         try:
@@ -844,37 +898,48 @@ def search_official_photo(wine: dict) -> Optional[tuple[bytes, str]]:
             continue
 
         for result in results:
+            if len(candidates) >= MAX_CANDIDATES:
+                break
             img_url = result.get('img_src') or result.get('url', '')
             if not img_url:
                 continue
-
-            # Filter by extension
             raw_path = img_url.split('?')[0]
             if Path(raw_path).suffix.lower() not in PHOTO_EXTENSIONS:
                 continue
 
             data, ratio, ext = download_and_score(img_url)
-            if data is None:
+            if data is None or ratio < 1.2:
                 continue
 
-            if ratio > best_ratio:
-                best_ratio = ratio
-                best_result = (data, ext)
-                log.debug(f"Nouveau meilleur ratio {ratio:.2f}: {img_url}")
+            candidates.append((ratio, data, ext))
+            log.debug(f"Candidat collecté ratio={ratio:.2f}: {img_url}")
 
-            if best_ratio >= 1.5:
-                log.info(f"Photo officielle trouvée (ratio {best_ratio:.2f}): {img_url}")
-                return best_result
+    if not candidates:
+        log.warning("Aucun candidat photo trouvé")
+        return None
 
-        if best_ratio >= 1.5:
-            break
+    # Sort best portrait ratio first
+    candidates.sort(key=lambda x: x[0], reverse=True)
 
-    if best_result:
-        log.info(f"Meilleure photo disponible (ratio {best_ratio:.2f})")
-        return best_result
+    # Visual validation: use scan JPEG if available
+    scan_jpeg = scan_jpegs[0] if scan_jpegs else None
 
-    log.warning("Aucune photo officielle valide trouvée")
-    return None
+    if scan_jpeg:
+        log.info(f"Validation visuelle de {len(candidates)} candidat(s) avec Ollama…")
+        for i, (ratio, data, ext) in enumerate(candidates):
+            log.info(f"  Candidat {i+1}/{len(candidates)} (ratio {ratio:.2f})…")
+            if validate_photo_match(scan_jpeg, data):
+                log.info(f"  ✓ Candidat {i+1} validé visuellement")
+                return data, ext
+            else:
+                log.info(f"  ✗ Candidat {i+1} rejeté (ne correspond pas)")
+        log.warning("Aucun candidat n'a passé la validation visuelle")
+        return None
+    else:
+        # No scan available for validation — fall back to best ratio
+        ratio, data, ext = candidates[0]
+        log.info(f"Pas de scan pour validation — meilleur ratio {ratio:.2f}")
+        return data, ext
 
 # ─── Core Processing ──────────────────────────────────────────────────────────────
 
@@ -963,9 +1028,9 @@ def process_group(
     ])).strip() or names
     _write_progress(scan_id, 'validate', f"Confiance {confidence} — {wine_label}")
 
-    # Search official photo
-    _write_progress(scan_id, 'photo', "Recherche de la photo officielle…")
-    photo_result = search_official_photo(wine_data)
+    # Search official photo (with visual validation against scan)
+    _write_progress(scan_id, 'photo', "Recherche et validation visuelle de la photo…")
+    photo_result = search_official_photo(wine_data, jpegs)
 
     # Write output files
     DEST.mkdir(parents=True, exist_ok=True)
