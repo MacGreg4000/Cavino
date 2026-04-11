@@ -807,19 +807,27 @@ def download_and_score(url: str) -> tuple[Optional[bytes], float, str]:
         return None, 0.0, ''
 
 
-def validate_photo_match(scan_jpeg: Path, candidate_bytes: bytes) -> bool:
+def validate_photo_match(scan_bytes: bytes, candidate_bytes: bytes) -> bool:
     """
     Ask Ollama to visually confirm that candidate_bytes shows the same wine
-    as the label in scan_jpeg. Returns True if match, False otherwise.
+    as scan_bytes. Returns True if match, False otherwise.
     """
     try:
-        scan_b64 = image_to_base64(scan_jpeg)
+        # Re-encode both as small JPEGs to reduce payload size
+        def to_b64_jpeg(data: bytes) -> str:
+            img = Image.open(BytesIO(data)).convert('RGB')
+            # Downscale to max 600px on long edge for faster Ollama processing
+            w, h = img.size
+            long_edge = max(w, h)
+            if long_edge > 600:
+                scale = 600 / long_edge
+                img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+            buf = BytesIO()
+            img.save(buf, 'JPEG', quality=75)
+            return base64.b64encode(buf.getvalue()).decode()
 
-        # Re-encode candidate as JPEG at reduced quality to avoid huge payloads
-        img = Image.open(BytesIO(candidate_bytes)).convert('RGB')
-        buf = BytesIO()
-        img.save(buf, 'JPEG', quality=70)
-        candidate_b64 = base64.b64encode(buf.getvalue()).decode()
+        scan_b64 = to_b64_jpeg(scan_bytes)
+        candidate_b64 = to_b64_jpeg(candidate_bytes)
     except Exception as e:
         log.warning(f"validate_photo_match: erreur préparation images: {e}")
         return False
@@ -870,32 +878,57 @@ def fetch_vivino_photo(domain: str, name: str, vintage: str) -> Optional[tuple[b
         return None
 
     log.info(f"Vivino API: «{query}»")
-    try:
-        resp = requests.get(
-            'https://www.vivino.com/api/explore/explore',
-            params={
-                'q': query,
-                'language': 'fr',
-                'currency_code': 'EUR',
-                'per_page': 5,
-            },
-            headers=VIVINO_HEADERS,
-            timeout=15,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-    except Exception as e:
-        log.warning(f"Vivino API erreur: {e}")
+
+    # Try multiple known Vivino API endpoints (they change periodically)
+    vivino_endpoints = [
+        {
+            'url': 'https://www.vivino.com/api/explore/explore',
+            'params': {'q': query, 'language': 'fr', 'currency_code': 'EUR', 'per_page': 5},
+            'extract': lambda d: ((d.get('explore_vintage') or {}).get('matches') or []),
+            'wine_from': lambda m: (m.get('vintage') or {}).get('wine') or {},
+        },
+        {
+            'url': 'https://www.vivino.com/search/wines',
+            'params': {'q': query},
+            'extract': lambda d: (d.get('wines') or {}).get('records') or [],
+            'wine_from': lambda m: m,
+        },
+    ]
+
+    data = None
+    extract_fn = None
+    wine_from_fn = None
+
+    for ep in vivino_endpoints:
+        try:
+            resp = requests.get(
+                ep['url'],
+                params=ep['params'],
+                headers=VIVINO_HEADERS,
+                timeout=15,
+            )
+            if resp.status_code in (400, 403, 404):
+                log.debug(f"Vivino endpoint {ep['url']} → {resp.status_code}, essai suivant")
+                continue
+            resp.raise_for_status()
+            data = resp.json()
+            extract_fn = ep['extract']
+            wine_from_fn = ep['wine_from']
+            break
+        except Exception as e:
+            log.debug(f"Vivino endpoint {ep['url']} erreur: {e}")
+            continue
+
+    if data is None:
+        log.warning("Vivino API: tous les endpoints ont échoué")
         return None
 
-    # Response: {"explore_vintage": {"matches": [{"vintage": {"wine": {..., "image": {...}}}}]}}
-    matches = (data.get('explore_vintage') or {}).get('matches') or []
+    matches = extract_fn(data)
     if not matches:
         log.info("Vivino: aucun résultat")
         return None
 
-    # Take first result's image
-    first_wine = (matches[0].get('vintage') or {}).get('wine') or {}
+    first_wine = wine_from_fn(matches[0])
     image_obj = first_wine.get('image') or {}
     variations = image_obj.get('variations') or {}
 
@@ -928,11 +961,12 @@ def fetch_vivino_photo(domain: str, name: str, vintage: str) -> Optional[tuple[b
     return data_bytes, ext
 
 
-def search_official_photo(wine: dict, scan_jpegs: list[Path]) -> Optional[tuple[bytes, str]]:
+def search_official_photo(wine: dict, scan_bytes: Optional[bytes]) -> Optional[tuple[bytes, str]]:
     """
     1. Try Vivino direct API (most accurate — exact wine match)
     2. Fallback: SearXNG with visual validation by Ollama
     Returns (image_bytes, extension) or None.
+    scan_bytes: bytes of the scan image used for visual validation (may be None)
     """
     identity = wine.get('identity', {})
     domain  = identity.get('domain', '') or ''
@@ -993,12 +1027,11 @@ def search_official_photo(wine: dict, scan_jpegs: list[Path]) -> Optional[tuple[
         return None
 
     candidates.sort(key=lambda x: x[0], reverse=True)
-    scan_jpeg = scan_jpegs[0] if scan_jpegs else None
 
-    if scan_jpeg:
+    if scan_bytes:
         log.info(f"Validation visuelle de {len(candidates)} candidat(s)…")
         for i, (ratio, data, ext) in enumerate(candidates):
-            if validate_photo_match(scan_jpeg, data):
+            if validate_photo_match(scan_bytes, data):
                 log.info(f"  ✓ Candidat {i+1} validé")
                 return data, ext
             log.info(f"  ✗ Candidat {i+1} rejeté")
@@ -1098,7 +1131,14 @@ def process_group(
 
     # Search official photo (with visual validation against scan)
     _write_progress(scan_id, 'photo', "Recherche et validation visuelle de la photo…")
-    photo_result = search_official_photo(wine_data, jpegs)
+    # Read scan bytes now while jpegs still exist, before any cleanup
+    scan_bytes_for_validation: Optional[bytes] = None
+    if jpegs:
+        try:
+            scan_bytes_for_validation = jpegs[0].read_bytes()
+        except Exception as e:
+            log.warning(f"Impossible de lire le jpeg pour validation: {e}")
+    photo_result = search_official_photo(wine_data, scan_bytes_for_validation)
 
     # Write output files
     DEST.mkdir(parents=True, exist_ok=True)
