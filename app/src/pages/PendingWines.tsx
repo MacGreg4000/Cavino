@@ -174,9 +174,9 @@ export function PendingWines() {
               <Card key={wine.id} hover className="!p-3" onClick={() => setSelected(wine)}>
                 <div className="flex items-center gap-3">
                   {wine.photoUrl ? (
-                    <img src={wine.photoUrl} alt="" className="w-14 h-14 rounded-[var(--radius-md)] object-cover" />
+                    <img src={wine.photoUrl} alt="" className="w-12 h-16 rounded-[var(--radius-md)] object-contain" />
                   ) : (
-                    <div className="w-14 h-14 rounded-[var(--radius-md)] bg-surface-hover flex items-center justify-center">
+                    <div className="w-12 h-16 rounded-[var(--radius-md)] bg-surface-hover flex items-center justify-center">
                       <Wine size={20} className="text-text-muted" />
                     </div>
                   )}

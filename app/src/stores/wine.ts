@@ -260,11 +260,8 @@ export const useWineStore = create<WineState>((set, get) => ({
   })),
 
   // WINE_PENDING: match FIFO to the oldest still-analyzing or uploading scan
-  // Also handles replay on reconnect: idempotent on pending list, still marks queue done
   addPendingFromWs: (wine) => {
     set((s) => {
-      // Idempotent: don't add duplicate to pending list
-      const alreadyPending = s.pending.some((w) => w.id === wine.id);
       const idx = s.scanQueue.findIndex((sc) => sc.status === 'analyzing' || sc.status === 'uploading');
       const newQueue = s.scanQueue.map((sc, i) =>
         i === idx
@@ -272,8 +269,8 @@ export const useWineStore = create<WineState>((set, get) => ({
           : sc
       );
       return {
-        pending: alreadyPending ? s.pending : [wine, ...s.pending],
-        pendingCount: alreadyPending ? s.pendingCount : s.pendingCount + 1,
+        pending: [wine, ...s.pending],
+        pendingCount: s.pendingCount + 1,
         scanQueue: newQueue,
       };
     });

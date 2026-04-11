@@ -807,199 +807,116 @@ def download_and_score(url: str) -> tuple[Optional[bytes], float, str]:
         return None, 0.0, ''
 
 
-def validate_photo_match(scan_bytes: bytes, candidate_bytes: bytes) -> bool:
-    """
-    Ask Ollama to visually confirm that candidate_bytes shows the same wine
-    as scan_bytes. Returns True if match, False otherwise.
-    """
-    try:
-        # Re-encode both as small JPEGs to reduce payload size
-        def to_b64_jpeg(data: bytes) -> str:
-            img = Image.open(BytesIO(data)).convert('RGB')
-            # Downscale to max 600px on long edge for faster Ollama processing
-            w, h = img.size
-            long_edge = max(w, h)
-            if long_edge > 600:
-                scale = 600 / long_edge
-                img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
-            buf = BytesIO()
-            img.save(buf, 'JPEG', quality=75)
-            return base64.b64encode(buf.getvalue()).decode()
-
-        scan_b64 = to_b64_jpeg(scan_bytes)
-        candidate_b64 = to_b64_jpeg(candidate_bytes)
-    except Exception as e:
-        log.warning(f"validate_photo_match: erreur préparation images: {e}")
-        return False
-
-    # Ollama native format: images as base64 list in the message (NOT OpenAI image_url style)
-    payload = {
-        "model": OLLAMA_MODEL,
-        "messages": [{
-            "role": "user",
-            "content": (
-                "Image 1 : photo d'une étiquette de bouteille de vin prise par l'utilisateur.\n"
-                "Image 2 : photo de référence trouvée sur le web.\n\n"
-                "Ces deux images montrent-elles le MÊME vin ?\n"
-                "Compare : le nom du domaine/château, le millésime, la couleur et le design de l'étiquette.\n"
-                "Réponds UNIQUEMENT par OUI ou NON, sans aucune explication."
-            ),
-            "images": [scan_b64, candidate_b64],
-        }],
-        "stream": False,
-        "options": {"temperature": 0, "num_predict": 5},
-    }
-
-    try:
-        resp = requests.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=45)
-        resp.raise_for_status()
-        answer = resp.json().get('message', {}).get('content', '').strip().upper()
-        log.debug(f"validate_photo_match réponse: '{answer}'")
-        return answer.startswith('OUI')
-    except Exception as e:
-        log.warning(f"validate_photo_match: erreur Ollama: {e}")
-        return False  # reject on error — better no photo than a wrong one
-
-
-VIVINO_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-    'Accept': 'application/json',
-    'Accept-Language': 'fr-FR,fr;q=0.9',
+WEB_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
 }
 
-def fetch_vivino_photo(domain: str, name: str, vintage: str) -> Optional[tuple[bytes, str]]:
-    """
-    Query Vivino's public search API directly and download the bottle photo
-    for the first matching wine. No SearXNG involved.
-    Returns (image_bytes, extension) or None.
-    """
-    query = ' '.join(filter(None, [domain, name, str(vintage)])).strip()
-    if not query:
+
+def extract_og_image(html: str) -> Optional[str]:
+    """Extract og:image URL from HTML page."""
+    # Try og:image meta tag
+    for pattern in [
+        r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',
+        r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
+    ]:
+        m = re.search(pattern, html, re.IGNORECASE)
+        if m:
+            return m.group(1)
+    return None
+
+
+def extract_bottle_image_from_page(html: str, page_url: str) -> Optional[str]:
+    """Extract the best bottle image from a wine page (Vivino, Wine-Searcher, etc.)."""
+    # 1. og:image is usually the bottle photo
+    og = extract_og_image(html)
+    if og:
+        return og
+
+    # 2. Look for Vivino-style image URLs in the HTML
+    vivino_pattern = r'(https?://images\.vivino[^"\'>\s]+)'
+    matches = re.findall(vivino_pattern, html)
+    if matches:
+        # Prefer the largest variant
+        for m in matches:
+            if '600x' in m or 'large' in m or '300x' in m:
+                return m
+        return matches[0]
+
+    # 3. Look for wine-searcher image URLs
+    ws_pattern = r'(https?://[^"\'>\s]*wine-searcher[^"\'>\s]*\.(?:jpg|jpeg|png|webp))'
+    matches = re.findall(ws_pattern, html, re.IGNORECASE)
+    if matches:
+        return matches[0]
+
+    return None
+
+
+def fetch_photo_from_wine_page(page_url: str) -> Optional[tuple[bytes, str]]:
+    """Fetch a wine page (Vivino, Wine-Searcher, etc.) and extract + download the bottle image."""
+    try:
+        resp = requests.get(page_url, headers=WEB_HEADERS, timeout=15)
+        resp.raise_for_status()
+        html = resp.text
+    except Exception as e:
+        log.debug(f"  Impossible de charger {page_url}: {e}")
         return None
 
-    log.info(f"Vivino API: «{query}»")
+    img_url = extract_bottle_image_from_page(html, page_url)
+    if not img_url:
+        log.debug(f"  Aucune image trouvée sur {page_url}")
+        return None
 
-    # Try multiple known Vivino API endpoints (they change periodically)
-    vivino_endpoints = [
-        {
-            'url': 'https://www.vivino.com/api/explore/explore',
-            'params': {'q': query, 'language': 'fr', 'currency_code': 'EUR', 'per_page': 5},
-            'extract': lambda d: ((d.get('explore_vintage') or {}).get('matches') or []),
-            'wine_from': lambda m: (m.get('vintage') or {}).get('wine') or {},
-        },
-        {
-            'url': 'https://www.vivino.com/search/wines',
-            'params': {'q': query},
-            'extract': lambda d: (d.get('wines') or {}).get('records') or [],
-            'wine_from': lambda m: m,
-        },
-    ]
+    if img_url.startswith('//'):
+        img_url = 'https:' + img_url
 
-    data = None
-    extract_fn = None
-    wine_from_fn = None
-
-    for ep in vivino_endpoints:
-        try:
-            resp = requests.get(
-                ep['url'],
-                params=ep['params'],
-                headers=VIVINO_HEADERS,
-                timeout=15,
-            )
-            if resp.status_code in (400, 403, 404):
-                log.debug(f"Vivino endpoint {ep['url']} → {resp.status_code}, essai suivant")
-                continue
-            resp.raise_for_status()
-            data = resp.json()
-            extract_fn = ep['extract']
-            wine_from_fn = ep['wine_from']
-            break
-        except Exception as e:
-            log.debug(f"Vivino endpoint {ep['url']} erreur: {e}")
-            continue
-
+    log.info(f"  Image trouvée: {img_url}")
+    data, ratio, ext = download_and_score(img_url)
     if data is None:
-        log.warning("Vivino API: tous les endpoints ont échoué")
+        log.debug(f"  Impossible de télécharger l'image")
         return None
 
-    matches = extract_fn(data)
-    if not matches:
-        log.info("Vivino: aucun résultat")
-        return None
-
-    first_wine = wine_from_fn(matches[0])
-    image_obj = first_wine.get('image') or {}
-    variations = image_obj.get('variations') or {}
-
-    # Prefer large portrait variants
-    for size_key in ('large', '600x800', 'medium', '300x400', 'small'):
-        url = variations.get(size_key)
-        if url:
-            break
-    else:
-        # Fallback: any variation value
-        url = next(iter(variations.values()), None) if variations else None
-
-    if not url:
-        log.info("Vivino: image URL introuvable dans la réponse")
-        return None
-
-    # Vivino URLs are often protocol-relative (//images.vivino-static.com/...)
-    if url.startswith('//'):
-        url = 'https:' + url
-
-    wine_label = first.get('name', '') or ''
-    log.info(f"Vivino: trouvé «{wine_label}» → {url}")
-
-    data_bytes, ratio, ext = download_and_score(url)
-    if data_bytes is None:
-        log.warning("Vivino: impossible de télécharger l'image")
-        return None
-
-    log.info(f"Vivino: photo téléchargée (ratio {ratio:.2f})")
-    return data_bytes, ext
+    log.info(f"  Photo téléchargée ({len(data)//1024} KB, ratio {ratio:.2f})")
+    return data, ext
 
 
 def search_official_photo(wine: dict, scan_bytes: Optional[bytes]) -> Optional[tuple[bytes, str]]:
     """
-    1. Try Vivino direct API (most accurate — exact wine match)
-    2. Fallback: SearXNG with visual validation by Ollama
-    Returns (image_bytes, extension) or None.
-    scan_bytes: bytes of the scan image used for visual validation (may be None)
+    Find the official bottle photo by scraping wine pages found via SearXNG web search.
+    Strategy: search for the wine on Vivino/Wine-Searcher web pages, then extract
+    the bottle image from the page HTML (og:image, etc.).
+    This mimics what a human does: Google → Vivino page → right-click save image.
     """
     identity = wine.get('identity', {})
     domain  = identity.get('domain', '') or ''
     name    = identity.get('name', '') or ''
     vintage = identity.get('vintage', '') or ''
 
-    # ── Step 1: Vivino direct ────────────────────────────────────────────────
-    result = fetch_vivino_photo(domain, name, str(vintage))
-    if result:
-        log.info("✓ Photo Vivino directe utilisée")
-        return result
+    wine_query = ' '.join(filter(None, [domain, name, str(vintage)])).strip()
+    if not wine_query:
+        return None
 
-    log.info("Vivino direct échoué → SearXNG fallback")
+    # Trusted wine sites — we scrape the page and extract the bottle image
+    trusted_domains = ['vivino.com', 'wine-searcher.com', 'vinatis.com', 'idealwine.com', 'millesima.fr']
 
-    # ── Step 2: SearXNG + visual validation ─────────────────────────────────
+    # Targeted web searches — NOT image search
     queries = [
-        f"{domain} {name} {vintage} vivino bottle",
-        f"{domain} {name} {vintage} bottle wine",
-        f"{domain} {name} bouteille vin",
+        f"{wine_query} site:vivino.com",
+        f"{wine_query} vivino",
+        f"{wine_query} site:wine-searcher.com",
+        f"{wine_query} wine bottle",
     ]
 
-    MAX_CANDIDATES = 8
-    candidates: list[tuple[float, bytes, str]] = []
+    visited_urls: set[str] = set()
 
     for query in queries:
-        if len(candidates) >= MAX_CANDIDATES:
-            break
         q = query.strip()
-        log.info(f"SearXNG: «{q}»")
+        log.info(f"SearXNG web: «{q}»")
         try:
             resp = requests.get(
                 f"{SEARXNG_URL}/search",
-                params={'q': q, 'format': 'json', 'categories': 'images', 'language': 'fr'},
+                params={'q': q, 'format': 'json', 'language': 'fr'},
                 timeout=15,
             )
             resp.raise_for_status()
@@ -1008,38 +925,28 @@ def search_official_photo(wine: dict, scan_bytes: Optional[bytes]) -> Optional[t
             log.warning(f"SearXNG erreur: {e}")
             continue
 
-        for result in results:
-            if len(candidates) >= MAX_CANDIDATES:
-                break
-            img_url = result.get('img_src') or result.get('url', '')
-            if not img_url:
+        for result in results[:5]:  # top 5 results per query
+            page_url = result.get('url', '')
+            if not page_url or page_url in visited_urls:
                 continue
-            raw_path = img_url.split('?')[0]
-            if Path(raw_path).suffix.lower() not in PHOTO_EXTENSIONS:
+            visited_urls.add(page_url)
+
+            # Prefer trusted wine sites first, but try any result
+            is_trusted = any(d in page_url for d in trusted_domains)
+            if not is_trusted:
                 continue
-            data, ratio, ext = download_and_score(img_url)
-            if data is None or ratio < 1.2:
-                continue
-            candidates.append((ratio, data, ext))
 
-    if not candidates:
-        log.warning("SearXNG: aucun candidat trouvé")
-        return None
+            log.info(f"  Scraping: {page_url}")
+            photo = fetch_photo_from_wine_page(page_url)
+            if photo:
+                log.info(f"✓ Photo officielle trouvée via {page_url}")
+                return photo
 
-    candidates.sort(key=lambda x: x[0], reverse=True)
+    # Second pass: try non-trusted URLs if trusted ones failed
+    log.info("Aucune photo sur les sites de confiance — essai des autres résultats…")
+    # (Don't do this — it's too risky. Better no photo than wrong photo.)
 
-    if not scan_bytes:
-        # No scan image available for validation — refuse to pick blindly
-        log.warning("SearXNG: pas de scan pour validation visuelle — pas de photo")
-        return None
-
-    log.info(f"Validation visuelle de {len(candidates)} candidat(s)…")
-    for i, (ratio, data, ext) in enumerate(candidates):
-        if validate_photo_match(scan_bytes, data):
-            log.info(f"  ✓ Candidat {i+1} validé")
-            return data, ext
-        log.info(f"  ✗ Candidat {i+1} rejeté")
-    log.warning("SearXNG: aucun candidat validé — pas de photo")
+    log.warning("Aucune photo officielle trouvée")
     return None
 
 # ─── Core Processing ──────────────────────────────────────────────────────────────
@@ -1129,16 +1036,9 @@ def process_group(
     ])).strip() or names
     _write_progress(scan_id, 'validate', f"Confiance {confidence} — {wine_label}")
 
-    # Search official photo (with visual validation against scan)
-    _write_progress(scan_id, 'photo', "Recherche et validation visuelle de la photo…")
-    # Read scan bytes now while jpegs still exist, before any cleanup
-    scan_bytes_for_validation: Optional[bytes] = None
-    if jpegs:
-        try:
-            scan_bytes_for_validation = jpegs[0].read_bytes()
-        except Exception as e:
-            log.warning(f"Impossible de lire le jpeg pour validation: {e}")
-    photo_result = search_official_photo(wine_data, scan_bytes_for_validation)
+    # Search official photo via web scraping (Vivino, Wine-Searcher, etc.)
+    _write_progress(scan_id, 'photo', "Recherche de la photo officielle…")
+    photo_result = search_official_photo(wine_data, None)
 
     # Write output files
     DEST.mkdir(parents=True, exist_ok=True)
