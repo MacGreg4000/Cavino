@@ -10,13 +10,17 @@ export function setReplayFn(fn: (ws: WebSocket) => Promise<void>) {
 
 export function addClient(ws: WebSocket) {
   clients.add(ws);
+  console.log(`🔌 WS client connecté (total: ${clients.size})`);
 
   // Catch up new/reconnected client with latest scan progress
   if (_replayFn) _replayFn(ws).catch(() => {});
 
   // Pong handler — réponse aux pings du client
   ws.on('pong', () => {});
-  ws.on('close', () => clients.delete(ws));
+  ws.on('close', () => {
+    clients.delete(ws);
+    console.log(`🔌 WS client déconnecté (total: ${clients.size})`);
+  });
 }
 
 export function broadcast(data: unknown) {

@@ -2,8 +2,11 @@ import chokidar from 'chokidar';
 import path from 'path';
 import fs from 'fs/promises';
 import type { WebSocket } from 'ws';
+import { eq } from 'drizzle-orm';
 import { INBOX_PATH, processInboxJsonFile, scanInboxFolder } from './inbox-import.js';
 import { broadcast } from './websocket.js';
+import { db } from './db/index.js';
+import { wines } from './db/schema.js';
 
 function isJsonPath(filePath: string): boolean {
   const b = path.basename(filePath);
@@ -18,6 +21,9 @@ const progressDir = () => path.join(INBOX_PATH, '.progress');
  * connected WebSocket client so it catches up after a reconnection.
  */
 export async function replayProgressForClient(ws: WebSocket): Promise<void> {
+  if (ws.readyState !== 1) return;
+
+  // 1. Replay last progress line for each active scan
   try {
     const dir = progressDir();
     const files = await fs.readdir(dir).catch(() => [] as string[]);
@@ -26,7 +32,7 @@ export async function replayProgressForClient(ws: WebSocket): Promise<void> {
       const fp = path.join(dir, f);
       try {
         const content = await fs.readFile(fp, 'utf-8');
-        const lines = content.split('\n').map(l => l.trim()).filter(Boolean);
+        const lines = content.split('\n').map((l: string) => l.trim()).filter(Boolean);
         if (lines.length === 0) continue;
         const lastLine = lines[lines.length - 1];
         const entry = JSON.parse(lastLine);
@@ -37,6 +43,17 @@ export async function replayProgressForClient(ws: WebSocket): Promise<void> {
       } catch { /* malformed */ }
     }
   } catch { /* progressDir not ready yet */ }
+
+  // 2. Replay WINE_PENDING for all wines currently in pending state
+  // This catches scans that completed while the WS was disconnected
+  try {
+    const pendingWines = await db.select().from(wines).where(eq(wines.importStatus, 'pending'));
+    for (const wine of pendingWines) {
+      if (ws.readyState === 1) {
+        ws.send(JSON.stringify({ type: 'WINE_PENDING', wine }));
+      }
+    }
+  } catch { /* db not ready */ }
 }
 
 export function startWatcher() {
@@ -119,6 +136,7 @@ export function startWatcher() {
         if (!line) continue;
         try {
           const entry = JSON.parse(line);
+          console.log(`📡 SCAN_PROGRESS → ${scanId}: ${entry.message?.slice(0, 60) ?? ''}`);
           broadcast({ type: 'SCAN_PROGRESS', scanId, ...entry });
         } catch { /* ligne malformée */ }
       }
