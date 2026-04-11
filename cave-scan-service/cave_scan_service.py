@@ -824,24 +824,19 @@ def validate_photo_match(scan_jpeg: Path, candidate_bytes: bytes) -> bool:
         log.warning(f"validate_photo_match: erreur préparation images: {e}")
         return False
 
+    # Ollama native format: images as base64 list in the message (NOT OpenAI image_url style)
     payload = {
         "model": OLLAMA_MODEL,
         "messages": [{
             "role": "user",
-            "content": [
-                {
-                    "type": "text",
-                    "text": (
-                        "Image 1 : photo d'une étiquette de bouteille de vin prise par l'utilisateur.\n"
-                        "Image 2 : photo de référence trouvée sur le web.\n\n"
-                        "Ces deux images montrent-elles le MÊME vin ?\n"
-                        "Compare : le nom du domaine/château, le millésime, la couleur et le design de l'étiquette.\n"
-                        "Réponds UNIQUEMENT par OUI ou NON, sans aucune explication."
-                    ),
-                },
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{scan_b64}"}},
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{candidate_b64}"}},
-            ],
+            "content": (
+                "Image 1 : photo d'une étiquette de bouteille de vin prise par l'utilisateur.\n"
+                "Image 2 : photo de référence trouvée sur le web.\n\n"
+                "Ces deux images montrent-elles le MÊME vin ?\n"
+                "Compare : le nom du domaine/château, le millésime, la couleur et le design de l'étiquette.\n"
+                "Réponds UNIQUEMENT par OUI ou NON, sans aucune explication."
+            ),
+            "images": [scan_b64, candidate_b64],
         }],
         "stream": False,
         "options": {"temperature": 0, "num_predict": 5},
@@ -877,8 +872,13 @@ def fetch_vivino_photo(domain: str, name: str, vintage: str) -> Optional[tuple[b
     log.info(f"Vivino API: «{query}»")
     try:
         resp = requests.get(
-            'https://www.vivino.com/api/wines/search',
-            params={'q': query, 'language': 'fr', 'currency_code': 'EUR'},
+            'https://www.vivino.com/api/explore/explore',
+            params={
+                'q': query,
+                'language': 'fr',
+                'currency_code': 'EUR',
+                'per_page': 5,
+            },
             headers=VIVINO_HEADERS,
             timeout=15,
         )
@@ -888,14 +888,15 @@ def fetch_vivino_photo(domain: str, name: str, vintage: str) -> Optional[tuple[b
         log.warning(f"Vivino API erreur: {e}")
         return None
 
-    wines = data.get('wines') or []
-    if not wines:
+    # Response: {"explore_vintage": {"matches": [{"vintage": {"wine": {..., "image": {...}}}}]}}
+    matches = (data.get('explore_vintage') or {}).get('matches') or []
+    if not matches:
         log.info("Vivino: aucun résultat")
         return None
 
     # Take first result's image
-    first = wines[0]
-    image_obj = first.get('image') or {}
+    first_wine = (matches[0].get('vintage') or {}).get('wine') or {}
+    image_obj = first_wine.get('image') or {}
     variations = image_obj.get('variations') or {}
 
     # Prefer large portrait variants
