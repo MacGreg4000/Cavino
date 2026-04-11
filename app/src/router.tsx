@@ -12,6 +12,7 @@ import { AddWine } from './pages/AddWine';
 import { AddWineManual } from './pages/AddWineManual';
 import { AddWineInbox } from './pages/AddWineInbox';
 import { ScanWine } from './pages/ScanWine';
+import { ScanQueue } from './pages/ScanQueue';
 import { CellarView } from './pages/CellarView';
 import { CellarEditor } from './pages/CellarEditor';
 import { Advisor } from './pages/Advisor';
@@ -55,6 +56,7 @@ export const router = createBrowserRouter([
           { path: '/add/manual', element: <AddWineManual /> },
           { path: '/add/inbox', element: <AddWineInbox /> },
           { path: '/scan', element: <ScanWine /> },
+          { path: '/scan/queue', element: <ScanQueue /> },
           { path: '/cellar', element: <CellarView /> },
           { path: '/cellar/new', element: <CellarEditor /> },
           { path: '/cellar/:id', element: <CellarView /> },
