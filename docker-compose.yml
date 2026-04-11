@@ -56,6 +56,25 @@ services:
     ports:
       - "${APP_PORT:-3011}:80"
 
+  cave-scan:
+    build: ./cave-scan-service
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      SEARXNG_URL: ${SEARXNG_URL:-http://host.docker.internal:8888}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3-vl:8b}
+      CAVE_BASE_DIR: /data/cave
+      SETTLE_DELAY: "3.0"
+    volumes:
+      - ./data/inbox:/data/cave
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
   cave-backup:
     image: postgres:16-alpine
     restart: unless-stopped
