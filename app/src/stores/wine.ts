@@ -247,7 +247,7 @@ export const useWineStore = create<WineState>((set, get) => ({
   addToQueue: (scanId) => set((s) => ({
     scanQueue: [
       ...s.scanQueue,
-      { scanId, startedAt: Date.now(), logs: [], status: 'analyzing' },
+      { scanId, startedAt: Date.now(), logs: [], status: 'uploading' },
     ],
   })),
 
@@ -259,10 +259,10 @@ export const useWineStore = create<WineState>((set, get) => ({
     ),
   })),
 
-  // WINE_PENDING: match FIFO to the oldest still-analyzing scan
+  // WINE_PENDING: match FIFO to the oldest still-analyzing or uploading scan
   addPendingFromWs: (wine) => {
     set((s) => {
-      const idx = s.scanQueue.findIndex((sc) => sc.status === 'analyzing');
+      const idx = s.scanQueue.findIndex((sc) => sc.status === 'analyzing' || sc.status === 'uploading');
       const newQueue = s.scanQueue.map((sc, i) =>
         i === idx
           ? { ...sc, status: 'done' as const, result: { status: 'success' as const, wine } }
@@ -280,7 +280,7 @@ export const useWineStore = create<WineState>((set, get) => ({
   markScanError: (scanId) => set((s) => {
     const idx = scanId
       ? s.scanQueue.findIndex((sc) => sc.scanId === scanId)
-      : s.scanQueue.findIndex((sc) => sc.status === 'analyzing');
+      : s.scanQueue.findIndex((sc) => sc.status === 'analyzing' || sc.status === 'uploading');
     if (idx === -1) return s;
     const newQueue = s.scanQueue.map((sc, i) =>
       i === idx

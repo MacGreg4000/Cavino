@@ -20,7 +20,7 @@ function ScanCard({ scan, onRemove }: { scan: QueuedScan; onRemove: () => void }
   }[scan.status];
 
   const statusLabel = {
-    uploading: 'Envoi…',
+    uploading: 'En attente…',
     analyzing: 'Analyse IA en cours…',
     done: 'Terminé',
     error: 'Échec',
@@ -55,6 +55,7 @@ function ScanCard({ scan, onRemove }: { scan: QueuedScan; onRemove: () => void }
           <p className="text-[11px] text-text-muted font-mono">
             {scan.scanId.slice(-8)}
             {scan.status === 'analyzing' && ` · ${elapsed < 60 ? `${elapsed}s` : `${Math.floor(elapsed / 60)}m${elapsed % 60}s`}`}
+            {scan.status === 'uploading' && ' · en file'}
           </p>
         </div>
         {scan.status === 'done' && wineId && (
@@ -71,10 +72,15 @@ function ScanCard({ scan, onRemove }: { scan: QueuedScan; onRemove: () => void }
         )}
       </div>
 
-      {/* Progress bar (analyzing) */}
+      {/* Progress bar — only for the scan actually running */}
       {scan.status === 'analyzing' && (
         <div className="h-0.5 bg-surface-hover mx-4 mb-3 rounded-full overflow-hidden">
           <div className="h-full bg-accent-bright rounded-full animate-pulse" style={{ width: '60%' }} />
+        </div>
+      )}
+      {scan.status === 'uploading' && (
+        <div className="h-0.5 bg-surface-hover mx-4 mb-3 rounded-full overflow-hidden">
+          <div className="h-full bg-border rounded-full" style={{ width: '100%' }} />
         </div>
       )}
 
@@ -147,7 +153,9 @@ export function ScanQueue() {
         {analyzing.length > 0 && (
           <div className="space-y-3">
             <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">
-              En cours ({analyzing.length})
+              {analyzing.filter(s => s.status === 'analyzing').length > 0
+                ? `En cours · ${analyzing.filter(s => s.status === 'uploading').length} en attente`
+                : `En attente (${analyzing.length})`}
             </p>
             {analyzing.map((scan) => (
               <ScanCard key={scan.scanId} scan={scan} onRemove={() => removeFromQueue(scan.scanId)} />
