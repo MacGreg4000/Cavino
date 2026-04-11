@@ -321,7 +321,7 @@ export function WineEdit() {
     <div>
       <PageHeader title="Modifier la fiche" back />
 
-      <div className="px-4 pt-4 max-w-lg mx-auto pb-24 space-y-4">
+      <div className="px-4 pt-4 max-w-lg mx-auto pb-36 space-y-4">
 
         {/* Identité */}
         <Card className="space-y-3">
@@ -454,8 +454,8 @@ export function WineEdit() {
 
       </div>
 
-      {/* Sticky save bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-bg/95 backdrop-blur border-t border-border px-4 py-3 flex gap-3 max-w-lg mx-auto">
+      {/* Sticky save bar — sits above the BottomNav (h-16 = 4rem) */}
+      <div className="fixed bottom-16 left-0 right-0 z-30 bg-bg/95 backdrop-blur border-t border-border px-4 py-3 flex gap-3">
         <Button variant="ghost" className="flex-1" onClick={() => navigate(`/cave/${id}`)}>
           Annuler
         </Button>
