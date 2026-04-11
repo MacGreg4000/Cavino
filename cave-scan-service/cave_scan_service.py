@@ -858,10 +858,79 @@ def validate_photo_match(scan_jpeg: Path, candidate_bytes: bytes) -> bool:
         return False  # reject on error — better no photo than a wrong one
 
 
+VIVINO_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+    'Accept': 'application/json',
+    'Accept-Language': 'fr-FR,fr;q=0.9',
+}
+
+def fetch_vivino_photo(domain: str, name: str, vintage: str) -> Optional[tuple[bytes, str]]:
+    """
+    Query Vivino's public search API directly and download the bottle photo
+    for the first matching wine. No SearXNG involved.
+    Returns (image_bytes, extension) or None.
+    """
+    query = ' '.join(filter(None, [domain, name, str(vintage)])).strip()
+    if not query:
+        return None
+
+    log.info(f"Vivino API: «{query}»")
+    try:
+        resp = requests.get(
+            'https://www.vivino.com/api/wines/search',
+            params={'q': query, 'language': 'fr', 'currency_code': 'EUR'},
+            headers=VIVINO_HEADERS,
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        log.warning(f"Vivino API erreur: {e}")
+        return None
+
+    wines = data.get('wines') or []
+    if not wines:
+        log.info("Vivino: aucun résultat")
+        return None
+
+    # Take first result's image
+    first = wines[0]
+    image_obj = first.get('image') or {}
+    variations = image_obj.get('variations') or {}
+
+    # Prefer large portrait variants
+    for size_key in ('large', '600x800', 'medium', '300x400', 'small'):
+        url = variations.get(size_key)
+        if url:
+            break
+    else:
+        # Fallback: any variation value
+        url = next(iter(variations.values()), None) if variations else None
+
+    if not url:
+        log.info("Vivino: image URL introuvable dans la réponse")
+        return None
+
+    # Vivino URLs are often protocol-relative (//images.vivino-static.com/...)
+    if url.startswith('//'):
+        url = 'https:' + url
+
+    wine_label = first.get('name', '') or ''
+    log.info(f"Vivino: trouvé «{wine_label}» → {url}")
+
+    data_bytes, ratio, ext = download_and_score(url)
+    if data_bytes is None:
+        log.warning("Vivino: impossible de télécharger l'image")
+        return None
+
+    log.info(f"Vivino: photo téléchargée (ratio {ratio:.2f})")
+    return data_bytes, ext
+
+
 def search_official_photo(wine: dict, scan_jpegs: list[Path]) -> Optional[tuple[bytes, str]]:
     """
-    Search for official bottle portrait via SearXNG, then visually validate
-    each candidate with Ollama against the original scan.
+    1. Try Vivino direct API (most accurate — exact wine match)
+    2. Fallback: SearXNG with visual validation by Ollama
     Returns (image_bytes, extension) or None.
     """
     identity = wine.get('identity', {})
@@ -869,19 +938,23 @@ def search_official_photo(wine: dict, scan_jpegs: list[Path]) -> Optional[tuple[
     name    = identity.get('name', '') or ''
     vintage = identity.get('vintage', '') or ''
 
-    # Vivino-first strategy: target the most reliable wine photo databases
+    # ── Step 1: Vivino direct ────────────────────────────────────────────────
+    result = fetch_vivino_photo(domain, name, str(vintage))
+    if result:
+        log.info("✓ Photo Vivino directe utilisée")
+        return result
+
+    log.info("Vivino direct échoué → SearXNG fallback")
+
+    # ── Step 2: SearXNG + visual validation ─────────────────────────────────
     queries = [
-        f"site:vivino.com {domain} {name} {vintage}",
-        f"site:vivino.com {domain} {name}",
-        f"site:wine-searcher.com {domain} {name} {vintage}",
         f"{domain} {name} {vintage} vivino bottle",
         f"{domain} {name} {vintage} bottle wine",
         f"{domain} {name} bouteille vin",
     ]
 
-    # Collect all portrait-ratio candidates across queries (up to 10)
-    MAX_CANDIDATES = 10
-    candidates: list[tuple[float, bytes, str]] = []  # (ratio, bytes, ext)
+    MAX_CANDIDATES = 8
+    candidates: list[tuple[float, bytes, str]] = []
 
     for query in queries:
         if len(candidates) >= MAX_CANDIDATES:
@@ -909,39 +982,30 @@ def search_official_photo(wine: dict, scan_jpegs: list[Path]) -> Optional[tuple[
             raw_path = img_url.split('?')[0]
             if Path(raw_path).suffix.lower() not in PHOTO_EXTENSIONS:
                 continue
-
             data, ratio, ext = download_and_score(img_url)
             if data is None or ratio < 1.2:
                 continue
-
             candidates.append((ratio, data, ext))
-            log.debug(f"Candidat collecté ratio={ratio:.2f}: {img_url}")
 
     if not candidates:
-        log.warning("Aucun candidat photo trouvé")
+        log.warning("SearXNG: aucun candidat trouvé")
         return None
 
-    # Sort best portrait ratio first
     candidates.sort(key=lambda x: x[0], reverse=True)
-
-    # Visual validation: use scan JPEG if available
     scan_jpeg = scan_jpegs[0] if scan_jpegs else None
 
     if scan_jpeg:
-        log.info(f"Validation visuelle de {len(candidates)} candidat(s) avec Ollama…")
+        log.info(f"Validation visuelle de {len(candidates)} candidat(s)…")
         for i, (ratio, data, ext) in enumerate(candidates):
-            log.info(f"  Candidat {i+1}/{len(candidates)} (ratio {ratio:.2f})…")
             if validate_photo_match(scan_jpeg, data):
-                log.info(f"  ✓ Candidat {i+1} validé visuellement")
+                log.info(f"  ✓ Candidat {i+1} validé")
                 return data, ext
-            else:
-                log.info(f"  ✗ Candidat {i+1} rejeté (ne correspond pas)")
-        log.warning("Aucun candidat n'a passé la validation visuelle")
+            log.info(f"  ✗ Candidat {i+1} rejeté")
+        log.warning("SearXNG: aucun candidat validé — pas de photo")
         return None
     else:
-        # No scan available for validation — fall back to best ratio
         ratio, data, ext = candidates[0]
-        log.info(f"Pas de scan pour validation — meilleur ratio {ratio:.2f}")
+        log.info(f"SearXNG: meilleur ratio {ratio:.2f} (sans validation)")
         return data, ext
 
 # ─── Core Processing ──────────────────────────────────────────────────────────────
