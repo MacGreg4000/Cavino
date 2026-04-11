@@ -2,8 +2,17 @@ import type { WebSocket } from 'ws';
 
 const clients = new Set<WebSocket>();
 
+// Lazily imported to avoid circular dep (watcher imports broadcast from here)
+let _replayFn: ((ws: WebSocket) => Promise<void>) | null = null;
+export function setReplayFn(fn: (ws: WebSocket) => Promise<void>) {
+  _replayFn = fn;
+}
+
 export function addClient(ws: WebSocket) {
   clients.add(ws);
+
+  // Catch up new/reconnected client with latest scan progress
+  if (_replayFn) _replayFn(ws).catch(() => {});
 
   // Pong handler — réponse aux pings du client
   ws.on('pong', () => {});

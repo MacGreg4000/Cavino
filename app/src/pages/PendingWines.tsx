@@ -49,23 +49,41 @@ function ValidationForm({ wine, onClose }: { wine: WineType; onClose: () => void
 
   return (
     <div className="space-y-4">
-      {/* Wine info */}
-      <div className="flex gap-3">
+      {/* Hero photo with blur */}
+      <div className="relative h-44 rounded-[var(--radius-lg)] overflow-hidden bg-surface-hover -mx-1">
         {wine.photoUrl ? (
-          <img src={wine.photoUrl} alt="" className="w-20 h-20 rounded-[var(--radius-md)] object-cover" />
+          <>
+            {/* Blurred background */}
+            <img
+              src={wine.photoUrl}
+              alt=""
+              className="absolute inset-0 w-full h-full object-cover scale-110 blur-xl opacity-40"
+            />
+            {/* Foreground bottle */}
+            <img
+              src={wine.photoUrl}
+              alt=""
+              className="relative mx-auto h-full object-contain drop-shadow-lg"
+            />
+          </>
         ) : (
-          <div className="w-20 h-20 rounded-[var(--radius-md)] bg-surface-hover flex items-center justify-center">
-            <Wine size={24} className="text-text-muted" />
+          <div className="flex items-center justify-center h-full">
+            <Wine size={40} className="text-text-muted opacity-30" />
           </div>
         )}
-        <div className="flex-1">
-          <h3 className="font-display font-semibold text-text">{wine.name}</h3>
-          <p className="text-xs text-text-secondary mt-0.5">
+        {/* Name overlay */}
+        <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 to-transparent px-4 py-3">
+          <h3 className="font-display font-semibold text-white text-base leading-tight">{wine.name}</h3>
+          <p className="text-xs text-white/70 mt-0.5">
             {wine.domain && `${wine.domain} · `}{wine.vintage || 'NV'}
+            {wine.appellation && ` · ${wine.appellation}`}
           </p>
-          <p className="text-xs text-text-secondary">{wine.appellation}</p>
-          {wine.type && <Badge variant="default" className="mt-1">{wine.type}</Badge>}
         </div>
+        {wine.type && (
+          <div className="absolute top-3 right-3">
+            <Badge variant="default">{wine.type}</Badge>
+          </div>
+        )}
       </div>
 
       {/* Quantity */}

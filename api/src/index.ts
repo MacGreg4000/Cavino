@@ -15,8 +15,8 @@ import { publicRoutes } from './routes/public.js';
 import { importRoutes } from './routes/import.js';
 import { scanRoutes } from './routes/scan.js';
 import { pdfRoutes } from './routes/pdf.js';
-import { startWatcher } from './watcher.js';
-import { addClient } from './websocket.js';
+import { startWatcher, replayProgressForClient } from './watcher.js';
+import { addClient, setReplayFn } from './websocket.js';
 
 const PORT = parseInt(process.env.PORT || '3001');
 const PHOTOS_PATH = process.env.PHOTOS_PATH || '/photos';
@@ -73,7 +73,8 @@ async function main() {
     console.error('❌ Database connection failed:', err);
   }
 
-  // Démarrer le watcher
+  // Démarrer le watcher + connecter le replay WS
+  setReplayFn(replayProgressForClient);
   startWatcher();
 
   // Démarrer le serveur

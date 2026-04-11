@@ -1,6 +1,7 @@
 import chokidar from 'chokidar';
 import path from 'path';
 import fs from 'fs/promises';
+import type { WebSocket } from 'ws';
 import { INBOX_PATH, processInboxJsonFile, scanInboxFolder } from './inbox-import.js';
 import { broadcast } from './websocket.js';
 
@@ -8,6 +9,34 @@ function isJsonPath(filePath: string): boolean {
   const b = path.basename(filePath);
   if (b.startsWith('._')) return false;
   return b.toLowerCase().endsWith('.json');
+}
+
+const progressDir = () => path.join(INBOX_PATH, '.progress');
+
+/**
+ * Replay the last progress line of every active .jsonl file to a newly
+ * connected WebSocket client so it catches up after a reconnection.
+ */
+export async function replayProgressForClient(ws: WebSocket): Promise<void> {
+  try {
+    const dir = progressDir();
+    const files = await fs.readdir(dir).catch(() => [] as string[]);
+    for (const f of files) {
+      if (!f.endsWith('.jsonl')) continue;
+      const fp = path.join(dir, f);
+      try {
+        const content = await fs.readFile(fp, 'utf-8');
+        const lines = content.split('\n').map(l => l.trim()).filter(Boolean);
+        if (lines.length === 0) continue;
+        const lastLine = lines[lines.length - 1];
+        const entry = JSON.parse(lastLine);
+        const scanId = path.basename(f, '.jsonl');
+        if (ws.readyState === 1) {
+          ws.send(JSON.stringify({ type: 'SCAN_PROGRESS', scanId, ...entry }));
+        }
+      } catch { /* malformed */ }
+    }
+  } catch { /* progressDir not ready yet */ }
 }
 
 export function startWatcher() {
