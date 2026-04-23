@@ -22,15 +22,18 @@ export async function statsRoutes(app: FastifyInstance) {
       .from(wines)
       .where(eq(wines.importStatus, 'pending'));
 
-    // Par type
-    const byType = await db.select({
-      type: wines.type,
-      count: count(),
-      totalQuantity: sum(wines.quantity),
-    })
-      .from(wines)
-      .where(eq(wines.importStatus, 'available'))
-      .groupBy(wines.type);
+    // Par type (normalisé : trim + initcap pour regrouper "rouge"/"Rouge"/etc.)
+    const byType = await db.execute(sql`
+      SELECT
+        INITCAP(LOWER(TRIM(type))) AS type,
+        COUNT(*)::int                AS count,
+        SUM(quantity)::int          AS "totalQuantity"
+      FROM wines
+      WHERE import_status = 'available'
+        AND type IS NOT NULL AND TRIM(type) != ''
+      GROUP BY INITCAP(LOWER(TRIM(type)))
+      ORDER BY COUNT(*) DESC
+    `);
 
     // Par région
     const byRegion = await db.select({
