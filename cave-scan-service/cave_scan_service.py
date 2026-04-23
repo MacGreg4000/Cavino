@@ -41,6 +41,7 @@ SETTLE       = float(os.getenv('SETTLE_DELAY', '3.0'))
 SOURCE   = CAVE_BASE / 'A analyser'
 DEST     = CAVE_BASE / 'Prêt à être importé'
 REF      = CAVE_BASE / 'importé'
+ERRORS   = CAVE_BASE / 'Erreurs'
 TEMP     = Path('/tmp/cave_previews')   # local to container — never on a volume
 PROGRESS = CAVE_BASE / '.progress'
 
@@ -245,6 +246,137 @@ def slugify(text: str) -> str:
     ascii_text = re.sub(r'[^a-z0-9]+', '-', ascii_text)
     ascii_text = re.sub(r'-+', '-', ascii_text)
     return ascii_text.strip('-')
+
+
+# ─── Appellation → cépages autorisés ─────────────────────────────────────────────
+#
+# Table de validation post-IA : si Ollama invente un cépage pour une appellation
+# connue, on le filtre. Les clés sont des fragments d'appellation (en minuscules,
+# sans accents) que l'on cherche dans `identity.appellation`. Première correspondance
+# utilisée. Appellations inconnues → aucune validation (laisse passer).
+#
+# Listes volontairement permissives (cépages principaux + substituts réguliers) ;
+# on vise à éliminer les hallucinations évidentes (Merlot dans Barolo), pas à faire
+# du contrôle INAO strict.
+APPELLATION_GRAPES: dict[str, set[str]] = {
+    # Italie — Vénétie
+    'valpolicella':  {'corvina', 'corvinone', 'rondinella', 'molinara', 'oseleta', 'negrara', 'dindarella'},
+    'amarone':       {'corvina', 'corvinone', 'rondinella', 'molinara', 'oseleta', 'negrara', 'dindarella'},
+    'ripasso':       {'corvina', 'corvinone', 'rondinella', 'molinara', 'oseleta'},
+    'recioto':       {'corvina', 'corvinone', 'rondinella', 'molinara'},
+    'soave':         {'garganega', 'trebbiano di soave', 'chardonnay', 'pinot bianco'},
+    'prosecco':      {'glera', 'chardonnay', 'pinot bianco', 'pinot grigio', 'pinot noir'},
+    # Italie — Piémont
+    'barolo':        {'nebbiolo'},
+    'barbaresco':    {'nebbiolo'},
+    'gattinara':     {'nebbiolo'},
+    'langhe nebbiolo': {'nebbiolo'},
+    'barbera':       {'barbera'},
+    'dolcetto':      {'dolcetto'},
+    # Italie — Toscane
+    'chianti':       {'sangiovese', 'canaiolo', 'colorino', 'merlot', 'cabernet sauvignon', 'cabernet franc', 'syrah'},
+    'brunello':      {'sangiovese'},  # Sangiovese Grosso
+    'vino nobile':   {'sangiovese', 'canaiolo'},  # Prugnolo Gentile = Sangiovese
+    'morellino':     {'sangiovese', 'canaiolo', 'merlot', 'cabernet sauvignon', 'syrah'},
+    # Italie — Abruzzes / Sicile
+    "montepulciano d'abruzzo": {'montepulciano'},
+    'nero d':        {'nero d\'avola'},  # Nero d'Avola
+    'etna':          {'nerello mascalese', 'nerello cappuccio', 'carricante', 'catarratto'},
+    # France — Bordeaux
+    'bordeaux':      {'cabernet sauvignon', 'merlot', 'cabernet franc', 'petit verdot', 'malbec', 'semillon', 'sauvignon blanc', 'muscadelle'},
+    'medoc':         {'cabernet sauvignon', 'merlot', 'cabernet franc', 'petit verdot', 'malbec'},
+    'saint-emilion': {'merlot', 'cabernet franc', 'cabernet sauvignon', 'malbec'},
+    'pomerol':       {'merlot', 'cabernet franc', 'cabernet sauvignon'},
+    'sauternes':     {'semillon', 'sauvignon blanc', 'muscadelle'},
+    'barsac':        {'semillon', 'sauvignon blanc', 'muscadelle'},
+    # France — Bourgogne
+    'bourgogne':     {'pinot noir', 'chardonnay', 'aligote', 'gamay'},
+    'chablis':       {'chardonnay'},
+    'meursault':     {'chardonnay'},
+    'pouilly-fuisse': {'chardonnay'},
+    'gevrey':        {'pinot noir'},
+    'vosne':         {'pinot noir'},
+    'beaujolais':    {'gamay'},
+    # France — Vallée du Rhône
+    'cote-rotie':    {'syrah', 'viognier'},
+    'condrieu':      {'viognier'},
+    'hermitage':     {'syrah', 'marsanne', 'roussanne'},
+    'crozes-hermitage': {'syrah', 'marsanne', 'roussanne'},
+    'chateauneuf':   {'grenache', 'syrah', 'mourvedre', 'cinsault', 'counoise', 'clairette', 'bourboulenc', 'roussanne', 'picpoul', 'terret noir', 'muscardin', 'vaccarese', 'picardan'},
+    'gigondas':      {'grenache', 'syrah', 'mourvedre', 'cinsault'},
+    'cotes du rhone': {'grenache', 'syrah', 'mourvedre', 'cinsault', 'carignan', 'counoise'},
+    # France — Loire
+    'sancerre':      {'sauvignon blanc', 'pinot noir'},
+    'pouilly-fume':  {'sauvignon blanc'},
+    'vouvray':       {'chenin blanc'},
+    'muscadet':      {'melon de bourgogne'},
+    'chinon':        {'cabernet franc', 'cabernet sauvignon'},
+    'bourgueil':     {'cabernet franc'},
+    'saumur':        {'cabernet franc', 'chenin blanc'},
+    # France — Alsace
+    'alsace':        {'riesling', 'gewurztraminer', 'pinot gris', 'muscat', 'pinot blanc', 'sylvaner', 'auxerrois', 'pinot noir', 'chardonnay'},
+    # France — Champagne
+    'champagne':     {'chardonnay', 'pinot noir', 'meunier', 'pinot meunier'},
+    'cremant':       {'chardonnay', 'pinot noir', 'meunier', 'pinot meunier', 'chenin blanc', 'cabernet franc', 'pinot blanc', 'auxerrois', 'pinot gris', 'riesling'},
+    # France — Sud-Ouest
+    'cahors':        {'malbec', 'merlot', 'tannat'},
+    'madiran':       {'tannat', 'cabernet sauvignon', 'cabernet franc', 'fer servadou'},
+    'jurancon':      {'petit manseng', 'gros manseng', 'courbu'},
+    # Espagne
+    'rioja':         {'tempranillo', 'garnacha', 'graciano', 'mazuelo', 'maturana', 'viura', 'malvasia'},
+    'ribera del duero': {'tempranillo', 'cabernet sauvignon', 'merlot', 'malbec', 'garnacha'},
+    'priorat':       {'garnacha', 'cariñena', 'carignan', 'cabernet sauvignon', 'merlot', 'syrah'},
+    'rias baixas':   {'albariño', 'albarino'},
+    'cava':          {'macabeo', 'xarel-lo', 'parellada', 'chardonnay', 'pinot noir'},
+    # Portugal
+    'douro':         {'touriga nacional', 'touriga franca', 'tinta roriz', 'tempranillo', 'tinta barroca', 'tinto cao'},
+    'porto':         {'touriga nacional', 'touriga franca', 'tinta roriz', 'tinta barroca', 'tinto cao', 'sousao'},
+    'vinho verde':   {'alvarinho', 'loureiro', 'arinto', 'trajadura', 'avesso'},
+}
+
+# Caractères à aplanir pour comparer les cépages (éviter casse, accents, ponctuation parasite)
+_GRAPE_FLATTEN_RE = re.compile(r'[^a-z\s]')
+
+
+def _flatten_grape(g: str) -> str:
+    nfkd = unicodedata.normalize('NFKD', g or '')
+    ascii_g = ''.join(c for c in nfkd if not unicodedata.combining(c)).lower().strip()
+    ascii_g = _GRAPE_FLATTEN_RE.sub('', ascii_g)
+    return re.sub(r'\s+', ' ', ascii_g).strip()
+
+
+def filter_illegal_grapes(appellation: str | None, grapes: list[str]) -> tuple[list[str], list[str]]:
+    """
+    Retourne (grapes_conservés, grapes_rejetés). Si l'appellation n'est pas dans la
+    table, rien n'est filtré. Si la liste de cépages extraite par Ollama contient
+    un cépage interdit pour l'appellation (ex: Merlot pour Barolo), il est rejeté.
+    """
+    if not appellation or not grapes:
+        return list(grapes or []), []
+    app_flat = _flatten_grape(appellation)
+    # Cherche la première clé qui apparaît dans l'appellation
+    allowed: set[str] | None = None
+    for key, allowed_set in APPELLATION_GRAPES.items():
+        if _flatten_grape(key) in app_flat:
+            allowed = {_flatten_grape(x) for x in allowed_set}
+            break
+    if allowed is None:
+        return list(grapes), []
+    kept: list[str] = []
+    rejected: list[str] = []
+    for g in grapes:
+        if not g:
+            continue
+        gf = _flatten_grape(g)
+        # Match si le cépage est contenu dans un cépage autorisé ou inverse
+        # (ex: "nebbiolo" match "nebbiolo" ; "cabernet" seul → kept si "cabernet sauvignon"
+        # est autorisé, car le modèle abrège parfois)
+        ok = any(gf == a or gf in a or a in gf for a in allowed)
+        if ok:
+            kept.append(g)
+        else:
+            rejected.append(g)
+    return kept, rejected
 
 
 def make_basename(wine: dict, today: str, suffix: str = '') -> str:
@@ -482,7 +614,9 @@ def analyze_with_ollama(jpeg_paths: list[Path], hint: Optional[str] = None) -> O
     """Send images to Ollama vision model, return parsed wine dict or None."""
     today = date.today().isoformat()
 
-    # Contexte adaptatif selon le nombre de photos
+    # Contexte adaptatif selon le nombre de photos.
+    # Quand il y en a 2+, elles sont FUSIONNÉES horizontalement en UNE image :
+    # on l'explicite au modèle pour qu'il sache où regarder pour quelle info.
     if len(jpeg_paths) == 1:
         photo_context = (
             "Une seule photo de la bouteille est fournie. "
@@ -491,12 +625,15 @@ def analyze_with_ollama(jpeg_paths: list[Path], hint: Optional[str] = None) -> O
         )
     else:
         photo_context = (
-            f"{len(jpeg_paths)} photos de la MÊME bouteille sont fournies (recto + verso ou angles différents). "
-            "IMPORTANT : toutes les images montrent LA MÊME bouteille — ne crée PAS plusieurs entrées. "
-            "Combine les informations de TOUTES les images pour produire une fiche unique et complète. "
-            "Le recto contient généralement le nom, le domaine, l'appellation et le millésime. "
-            "Le verso contient généralement l'alcool, les cépages, les accords, le producteur et les mentions légales. "
-            "Priorité aux informations les plus lisibles parmi toutes les photos."
+            f"L'image fournie est en réalité une FUSION HORIZONTALE de {len(jpeg_paths)} photos de la MÊME bouteille, "
+            "assemblées côte à côte (PAS plusieurs bouteilles).\n"
+            "  • MOITIÉ GAUCHE de l'image = RECTO (étiquette frontale) — nom du vin, domaine/château, "
+            "appellation, millésime, classification.\n"
+            "  • MOITIÉ DROITE de l'image = VERSO (contre-étiquette) — degré d'alcool, cépages, "
+            "producteur, mentions légales, éventuelles recommandations d'accords ou de service.\n"
+            "RÈGLE : combine les informations des DEUX moitiés dans UNE SEULE fiche JSON. "
+            "Ne crée JAMAIS deux bouteilles distinctes même si les étiquettes se ressemblent peu. "
+            "Si une information apparaît sur les deux moitiés, privilégie la plus lisible."
         )
 
     prompt = SYSTEM_PROMPT.format(
@@ -541,16 +678,21 @@ def analyze_with_ollama(jpeg_paths: list[Path], hint: Optional[str] = None) -> O
         },
         {
             "role": "user",
-            # /no_think en tête du message user = méthode officielle qwen3 pour désactiver le thinking
+            # /no_think en tête du message user = méthode officielle qwen3 pour désactiver le thinking.
+            # Le hint utilisateur est isolé dans un tag XML `<user_hint>` pour que le modèle le traite
+            # comme une source séparée (pas du contenu à ignorer dilué dans les consignes).
             "content": (
                 "/no_think\n"
                 "⚠️ LANGUE OBLIGATOIRE : Tous les textes (description, palate, style, agingNotes, "
                 "arômes, accords, occasions, glassType) DOIVENT être rédigés en FRANÇAIS. "
                 "Ne jamais utiliser l'anglais, même partiellement.\n\n"
             ) + (
-                f"⚠️ INDICE UTILISATEUR (priorité absolue) : {hint}\n"
-                "Utilise cet indice pour corriger ou compléter ce que tu lis sur l'étiquette. "
-                "Si l'étiquette est illisible ou ambiguë, l'indice fait foi.\n\n"
+                f"<user_hint>\n{hint}\n</user_hint>\n"
+                "Le bloc <user_hint> ci-dessus est une information directe du propriétaire de la bouteille. "
+                "Traite-la comme une SOURCE DE VÉRITÉ qui prime sur toute lecture ambiguë de l'étiquette : "
+                "nom, domaine, millésime, prix indicatif, cépage. Si l'étiquette est floue ou contradictoire, "
+                "le <user_hint> fait foi. Si le hint parle d'un prix/cépage/année absent de l'étiquette, "
+                "utilise-le tel quel.\n\n"
                 if hint else ""
             ) + prompt,
             "images": images_b64,
@@ -560,6 +702,10 @@ def analyze_with_ollama(jpeg_paths: list[Path], hint: Optional[str] = None) -> O
     payload = {
         "model": OLLAMA_MODEL,
         "think": False,           # niveau racine — supporté par qwen3 dans Ollama ≥ 0.6
+        # JSON mode natif Ollama : garantit que la réponse est un objet JSON valide,
+        # évite les blocs markdown, les commentaires et les "json:" en préfixe que le
+        # modèle produisait parfois et qu'on rattrapait à la regex.
+        "format": "json",
         "messages": messages,
         "options": {"temperature": 0.1, "num_ctx": 16384, "num_predict": 8192},
         "stream": False,
@@ -724,6 +870,23 @@ def validate_and_fix(data: dict, basename: str) -> dict:
     for key in ('grapes', 'mentions'):
         if identity.get(key) is None:
             identity[key] = []
+
+    # Filtrer les cépages qui ne sont pas autorisés par l'appellation (anti-hallucination
+    # ciblée sur le cas classique "Merlot dans Barolo" / "Sangiovese dans Amarone").
+    appellation_raw = identity.get('appellation') or ''
+    kept, rejected = filter_illegal_grapes(appellation_raw, identity.get('grapes', []))
+    if rejected:
+        log.warning(
+            f"Cépages rejetés pour appellation {appellation_raw!r} : {rejected} "
+            f"(non autorisés dans la liste APPELLATION_GRAPES)"
+        )
+        identity['grapes'] = kept
+        # Signale la correction via meta.notes et baisse la confiance : l'utilisateur
+        # est prévenu qu'il doit vérifier.
+        note = meta.get('notes') or ''
+        meta['notes'] = (note + f" | Cépages rejetés: {', '.join(rejected)}").lstrip(' | ')
+        if meta.get('confidence') == 'high':
+            meta['confidence'] = 'medium'
 
     # Remove mentions that duplicate domain/producer/name/appellation
     redundant = {
@@ -951,6 +1114,32 @@ def search_official_photo(wine: dict, scan_bytes: Optional[bytes]) -> Optional[t
 
 # ─── Core Processing ──────────────────────────────────────────────────────────────
 
+def _move_to_errors(photos: list[Path], scan_id: Optional[str]) -> None:
+    """Déplace les fichiers sources vers /Erreurs pour qu'ils ne soient plus re-traités.
+    Sans ce move, watchdog/process_all_pending les redétecte à chaque tick et relance Ollama en boucle."""
+    try:
+        ERRORS.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    for p in photos:
+        try:
+            dst = ERRORS / p.name
+            # Éviter d'écraser un fichier déjà en erreur
+            if dst.exists():
+                dst = ERRORS / f"{p.stem}_{int(time.time())}{p.suffix}"
+            p.rename(dst)
+            log.info(f"🗃️  Déplacé en erreur: {p.name}")
+        except Exception as e:
+            log.warning(f"Impossible de déplacer {p.name} vers /Erreurs: {e}")
+    if scan_id:
+        hint_file = photos[0].parent / f"{scan_id}_hint.txt" if photos else None
+        if hint_file and hint_file.exists():
+            try:
+                hint_file.rename(ERRORS / hint_file.name)
+            except Exception:
+                pass
+
+
 def process_group(
     photos: list[Path],
     today: str,
@@ -959,7 +1148,8 @@ def process_group(
     """
     Process one group (1 or 2 photos).
     Returns (success, label, confidence, photo_info, basename).
-    On failure, originals are NOT deleted.
+    On failure, the originals are MOVED to /Erreurs (not left in SOURCE),
+    which prevents infinite re-processing loops when Ollama fails.
     """
     scan_id = _extract_scan_id(photos)
     names = ', '.join(p.name for p in photos)
@@ -973,6 +1163,8 @@ def process_group(
         if p.suffix.lower() in ('.heic', '.heif') and not HEIC_SUPPORTED:
             log.error(f"HEIC non supporté (pillow-heif manquant): {p.name}")
             _write_progress(scan_id, 'convert', f"Format HEIC non supporté : {p.name}", 'error')
+            _write_progress(scan_id, 'done', "Échec de conversion", 'error')
+            _move_to_errors(photos, scan_id)
             return False, p.name, 'low', '', ''
         j = convert_to_jpeg(p)
         if j:
@@ -981,6 +1173,8 @@ def process_group(
     if not jpegs:
         log.error(f"Aucune image convertible: {names}")
         _write_progress(scan_id, 'convert', "Aucune image convertible", 'error')
+        _write_progress(scan_id, 'done', "Échec de conversion", 'error')
+        _move_to_errors(photos, scan_id)
         return False, names, 'low', '', ''
 
     _write_progress(scan_id, 'convert', f"{len(jpegs)} image(s) convertie(s)")
@@ -1010,6 +1204,8 @@ def process_group(
     if wine_data is None:
         _cleanup_temp(jpegs)
         _write_progress(scan_id, 'ollama', "Le modèle n'a pas retourné de résultat valide", 'error')
+        _write_progress(scan_id, 'done', "Échec Ollama", 'error')
+        _move_to_errors(photos, scan_id)
         return False, names, 'low', '', ''
 
     _write_progress(scan_id, 'ollama', "Analyse IA terminée")
@@ -1027,6 +1223,10 @@ def process_group(
     # Validate & fix JSON
     _write_progress(scan_id, 'validate', "Validation et correction du JSON…")
     wine_data = validate_and_fix(wine_data, basename)
+    # Propagation du scanId : clé d'idempotence lue par l'importer Node (meta.scanId).
+    # Empêche les doublons si le fichier JSON est relu/ré-ingéré.
+    if scan_id:
+        wine_data.setdefault('meta', {})['scanId'] = scan_id
     confidence = wine_data.get('meta', {}).get('confidence', 'medium')
     identity = wine_data.get('identity', {})
     wine_label = ' '.join(filter(None, [
@@ -1040,13 +1240,12 @@ def process_group(
     _write_progress(scan_id, 'photo', "Recherche de la photo officielle…")
     photo_result = search_official_photo(wine_data, None)
 
-    # Write output files
+    # Prépare les chemins de sortie
     DEST.mkdir(parents=True, exist_ok=True)
     json_path = DEST / f"{basename}.json"
-    with open(json_path, 'w', encoding='utf-8') as f:
-        json.dump(wine_data, f, ensure_ascii=False, indent=2)
-    log.info(f"JSON écrit: {json_path.name}")
 
+    # Écrit d'abord la photo + met à jour wine_data SANS écrire le JSON, puis un seul write.
+    # Ordre : photo → JSON. Ainsi quand le watcher Node lit le JSON, la photo est déjà là.
     photo_info = '❌ aucune photo'
     if photo_result:
         photo_bytes, ext = photo_result
@@ -1058,7 +1257,7 @@ def process_group(
         _write_progress(scan_id, 'photo', "Photo officielle trouvée")
     else:
         _write_progress(scan_id, 'photo', "Aucune photo officielle — utilisation du scan", 'warning')
-        # Fallback : utiliser la photo de scan (premier JPEG converti)
+        note = wine_data.setdefault('meta', {}).get('notes') or ''
         if jpegs:
             fallback_src = jpegs[0]
             fallback_dst = DEST / f"{basename}.jpg"
@@ -1067,17 +1266,20 @@ def process_group(
                 shutil.copy2(fallback_src, fallback_dst)
                 photo_info = f"📷 scan (fallback) → {fallback_dst.name}"
                 log.info(f"Photo scan utilisée comme fallback: {fallback_dst.name}")
-                note = wine_data['meta'].get('notes') or ''
                 wine_data['meta']['notes'] = (note + ' | Photo scan utilisée (aucune officielle trouvée)').lstrip(' | ')
             except Exception as e:
                 log.warning(f"Impossible de copier la photo scan: {e}")
-                note = wine_data['meta'].get('notes') or ''
                 wine_data['meta']['notes'] = (note + ' | Aucune photo officielle trouvée').lstrip(' | ')
         else:
-            note = wine_data['meta'].get('notes') or ''
             wine_data['meta']['notes'] = (note + ' | Aucune photo officielle trouvée').lstrip(' | ')
-        with open(json_path, 'w', encoding='utf-8') as f:
-            json.dump(wine_data, f, ensure_ascii=False, indent=2)
+
+    # Une SEULE écriture du JSON, avec l'état final. Critique : avant cette refonte,
+    # le JSON était écrit puis réécrit dans la branche fallback, ce qui déclenchait
+    # un second `change` event côté watcher Node et ouvrait la porte à des imports
+    # multiples du même scan.
+    with open(json_path, 'w', encoding='utf-8') as f:
+        json.dump(wine_data, f, ensure_ascii=False, indent=2)
+    log.info(f"JSON écrit: {json_path.name}")
 
     # Delete originals (only on success)
     for p in photos:
@@ -1266,7 +1468,7 @@ def main():
     log.info(f"   HEIC    : {'✅ supporté' if HEIC_SUPPORTED else '❌ non supporté (pillow-heif manquant)'}")
     log.info("=" * 52)
 
-    for d in (SOURCE, DEST, REF, TEMP):
+    for d in (SOURCE, DEST, REF, ERRORS, TEMP):
         d.mkdir(parents=True, exist_ok=True)
 
     ping_ollama()

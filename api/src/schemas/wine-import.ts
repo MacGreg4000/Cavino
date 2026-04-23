@@ -90,6 +90,7 @@ export const wineImportSchema = z.object({
     photoQuality: ns,
     importStatus: ns,
     photoFilename: ns,
+    scanId: ns,
   }).optional(),
 });
 

@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { eq, and, ilike } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { db } from './db/index.js';
 import { wines } from './db/schema.js';
 import { wineImportSchema } from './schemas/wine-import.js';
@@ -13,9 +13,18 @@ interface ImportInput {
   photoPath: string | null;
 }
 
-type ImportResult =
-  | { success: true; wine: { id: string; name: string } }
+export type ImportResult =
+  | { success: true; wine: Record<string, unknown> & { id: string; name: string; scanId: string | null }; alreadyImported?: boolean }
   | { success: false; error: string };
+
+/** Normalise un texte pour comparaison insensible à la casse et aux diacritiques. */
+function normalize(s: string | null | undefined): string {
+  return (s ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+}
 
 export async function importWinePair({ jsonPath, photoPath }: ImportInput): Promise<ImportResult> {
   try {
@@ -28,19 +37,50 @@ export async function importWinePair({ jsonPath, photoPath }: ImportInput): Prom
     }
 
     const data = parsed.data;
+    const scanId = data.meta?.scanId?.trim() || null;
 
-    // Check for duplicate (same name + domain + vintage)
-    const dupConditions = [ilike(wines.name, data.identity.name)];
-    if (data.identity.domain) dupConditions.push(ilike(wines.domain, data.identity.domain));
-    if (data.identity.vintage) dupConditions.push(eq(wines.vintage, data.identity.vintage));
+    // ── Idempotence primaire : scanId UNIQUE ────────────────────────────────
+    // Si ce scan a déjà produit une bouteille, on ne réimporte JAMAIS. Couvre :
+    //   - réécriture JSON par cave-scan-service
+    //   - relecture du watcher après déplacement
+    //   - redémarrage container pendant un traitement
+    if (scanId) {
+      const [dup] = await db
+        .select()
+        .from(wines)
+        .where(eq(wines.scanId, scanId))
+        .limit(1);
+      if (dup) {
+        return {
+          success: true,
+          wine: dup as typeof dup & { id: string; name: string; scanId: string | null },
+          alreadyImported: true,
+        };
+      }
+    }
 
-    const [existing] = await db.select({ id: wines.id, name: wines.name, importStatus: wines.importStatus })
-      .from(wines)
-      .where(and(...dupConditions))
-      .limit(1);
-
-    if (existing) {
-      return { success: false, error: `Doublon détecté : "${existing.name}" existe déjà dans la cave` };
+    // ── Dédup secondaire : même identité (name + domain + vintage) ───────────
+    // Filtrage en JS avec normalisation accent-insensible pour rattraper les cas
+    // où Ollama produit "Château" vs "Chateau" pour le même vin.
+    //
+    // Déclenché seulement si on a un millésime ET un nom, pour limiter la fenêtre
+    // de candidats à récupérer et éviter les faux positifs sur noms génériques.
+    const normName = normalize(data.identity.name);
+    const normDomain = normalize(data.identity.domain);
+    const vintage = data.identity.vintage ?? null;
+    if (normName && vintage != null) {
+      const candidates = await db
+        .select({ id: wines.id, name: wines.name, domain: wines.domain, vintage: wines.vintage })
+        .from(wines)
+        .where(eq(wines.vintage, vintage));
+      const existing = candidates.find((c) => {
+        if (normalize(c.name) !== normName) return false;
+        if (normDomain && normalize(c.domain) !== normDomain) return false;
+        return true;
+      });
+      if (existing) {
+        return { success: false, error: `Doublon détecté : "${existing.name}" existe déjà dans la cave` };
+      }
     }
 
     const wineId = uuidv4();
@@ -141,11 +181,17 @@ export async function importWinePair({ jsonPath, photoPath }: ImportInput): Prom
       sourceFile: path.basename(jsonPath),
       scanDate,
       scanConfidence,
-    }).returning({ id: wines.id, name: wines.name });
+      scanId,
+    }).returning();
 
-    return { success: true, wine: { id: inserted.id, name: inserted.name } };
+    return { success: true, wine: inserted as typeof inserted & { id: string; name: string; scanId: string | null } };
   } catch (err) {
+    // Race condition : le même scanId a été inséré entre notre check et notre insert.
+    // Avec la contrainte UNIQUE(scan_id), Postgres remontera une erreur `23505`.
     const message = err instanceof Error ? err.message : 'Unknown error';
+    if (message.includes('scan_id') || message.includes('23505')) {
+      return { success: false, error: 'Déjà importé (race)' };
+    }
     return { success: false, error: message };
   }
 }

@@ -25,9 +25,10 @@ export function useWebSocket() {
         try {
           const data = JSON.parse(event.data);
           if (data.type === 'WINE_PENDING') {
-            addPendingFromWs(data.wine);
+            // Passe le scanId top-level (backend) ou fallback sur wine.scanId (DB row)
+            addPendingFromWs(data.wine, data.scanId ?? data.wine?.scanId ?? null);
           } else if (data.type === 'IMPORT_ERROR') {
-            markScanError();
+            markScanError(data.scanId);
             toast('error', `Erreur d'analyse : ${data.error}`);
           } else if (data.type === 'SCAN_PROGRESS') {
             addScanProgress(data.scanId, {
@@ -36,6 +37,11 @@ export function useWebSocket() {
               message: data.message,
               level: data.level ?? 'info',
             });
+            // Le scan-service signale un échec terminal par stage='done' + level='error'.
+            // Sans ça, le scan reste coincé en "analyzing" pour toujours côté front.
+            if (data.stage === 'done' && data.level === 'error') {
+              markScanError(data.scanId);
+            }
           }
         } catch {}
       };

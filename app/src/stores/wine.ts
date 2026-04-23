@@ -57,6 +57,7 @@ export interface Wine {
   sourceFile?: string;
   scanDate?: string;
   scanConfidence?: string;
+  scanId?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -104,7 +105,7 @@ interface WineState {
   // Scan queue actions
   addToQueue: (scanId: string) => void;
   addScanProgress: (scanId: string, entry: ScanProgressEntry) => void;
-  addPendingFromWs: (wine: Wine) => void;
+  addPendingFromWs: (wine: Wine, scanId?: string | null) => void;
   markScanError: (scanId?: string) => void;
   removeFromQueue: (scanId: string) => void;
   clearFinishedScans: () => void;
@@ -251,26 +252,50 @@ export const useWineStore = create<WineState>((set, get) => ({
     ],
   })),
 
-  addScanProgress: (scanId, entry) => set((s) => ({
-    scanQueue: s.scanQueue.map((scan) =>
-      scan.scanId === scanId
-        ? { ...scan, status: 'analyzing' as const, logs: [...scan.logs, entry] }
-        : scan
-    ),
-  })),
+  addScanProgress: (scanId, entry) => set((s) => {
+    const exists = s.scanQueue.some((sc) => sc.scanId === scanId);
+    if (exists) {
+      return {
+        scanQueue: s.scanQueue.map((scan) =>
+          scan.scanId === scanId
+            ? { ...scan, status: 'analyzing' as const, logs: [...scan.logs, entry] }
+            : scan
+        ),
+      };
+    }
+    // Unknown scanId (e.g. scan initiated on another device) — auto-add to queue
+    return {
+      scanQueue: [
+        ...s.scanQueue,
+        { scanId, startedAt: Date.now(), logs: [entry], status: 'analyzing' as const },
+      ],
+    };
+  }),
 
-  // WINE_PENDING: match FIFO to the oldest still-analyzing or uploading scan
-  addPendingFromWs: (wine) => {
+  // WINE_PENDING: match par scanId si fourni (précis), sinon FIFO (legacy).
+  // Idempotent sur la liste pending (replay WS n'ajoute pas de doublon).
+  addPendingFromWs: (wine, scanId) => {
     set((s) => {
-      const idx = s.scanQueue.findIndex((sc) => sc.status === 'analyzing' || sc.status === 'uploading');
+      const alreadyPending = s.pending.some((w) => w.id === wine.id);
+
+      // Match prioritaire : scanId exact. Évite les erreurs d'attribution
+      // quand les scans se terminent dans un ordre différent de leur soumission.
+      let idx = -1;
+      if (scanId) {
+        idx = s.scanQueue.findIndex((sc) => sc.scanId === scanId);
+      }
+      if (idx === -1) {
+        idx = s.scanQueue.findIndex((sc) => sc.status === 'analyzing' || sc.status === 'uploading');
+      }
+
       const newQueue = s.scanQueue.map((sc, i) =>
         i === idx
           ? { ...sc, status: 'done' as const, result: { status: 'success' as const, wine } }
           : sc
       );
       return {
-        pending: [wine, ...s.pending],
-        pendingCount: s.pendingCount + 1,
+        pending: alreadyPending ? s.pending : [wine, ...s.pending],
+        pendingCount: alreadyPending ? s.pendingCount : s.pendingCount + 1,
         scanQueue: newQueue,
       };
     });

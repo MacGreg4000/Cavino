@@ -75,9 +75,18 @@ export async function processInboxJsonFile(jsonPath: string): Promise<ProcessInb
     const result = await importWinePair({ jsonPath, photoPath });
 
     if (result.success) {
+      // Déplacer les fichiers (succès ou déjà importé → pas besoin de les garder)
       await moveFile(jsonPath, PROCESSED_PATH);
       if (photoPath) await moveFile(photoPath, PROCESSED_PATH);
-      broadcast({ type: 'WINE_PENDING', wine: result.wine });
+
+      if (result.alreadyImported) {
+        // Scan déjà importé précédemment : ne PAS rediffuser WINE_PENDING.
+        // Le front a déjà la bouteille dans sa liste, on évite les doublons d'affichage.
+        console.log(`↩️  Déjà importé (scanId=${result.wine.scanId}): ${result.wine.name}`);
+        return 'imported';
+      }
+
+      broadcast({ type: 'WINE_PENDING', wine: result.wine, scanId: result.wine.scanId });
       console.log(`✅ Importé: ${result.wine.name}`);
       return 'imported';
     }

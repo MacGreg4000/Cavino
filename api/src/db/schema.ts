@@ -104,6 +104,8 @@ export const wines = pgTable('wines', {
   sourceFile: text('source_file'),
   scanDate: date('scan_date'),
   scanConfidence: text('scan_confidence'),
+  /** Clé d'idempotence : identifie un upload unique bout-en-bout (front → scan-service → import). Empêche les doublons même si le scan-service réécrit le JSON ou que le watcher le relit. */
+  scanId: text('scan_id').unique(),
 
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
