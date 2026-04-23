@@ -1,10 +1,11 @@
 import { useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { Wine, Clock, TrendingUp, AlertCircle, Settings, History, GlassWater, Plus, CheckCircle } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Wine, Clock, TrendingUp, AlertCircle, Settings, History, GlassWater, Plus, CheckCircle, LogOut } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { WinePhoto } from '../components/ui/WinePhoto';
 import { useWineStore, type Wine as WineType } from '../stores/wine';
+import { useAuthStore } from '../stores/auth';
 
 interface TimelineEvent {
   id: string;
@@ -55,6 +56,8 @@ function formatRelativeDate(date: Date): string {
 
 export function Home() {
   const { wines, pendingCount, fetchWines, fetchPending } = useWineStore();
+  const logout = useAuthStore((s) => s.logout);
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchWines();
@@ -77,9 +80,18 @@ export function Home() {
           <h1 className="font-display text-3xl font-bold tracking-tight">Cavino</h1>
           <p className="text-text-muted text-sm mt-1">Votre cave personnelle</p>
         </div>
-        <Link to="/settings" className="p-2 text-text-muted hover:text-text transition-colors mt-1">
-          <Settings size={20} />
-        </Link>
+        <div className="flex items-center gap-1 mt-1">
+          <Link to="/settings" className="p-2 text-text-muted hover:text-text transition-colors">
+            <Settings size={20} />
+          </Link>
+          <button
+            onClick={() => { logout(); navigate('/login'); }}
+            className="p-2 text-text-muted hover:text-danger transition-colors"
+            title="Se déconnecter"
+          >
+            <LogOut size={20} />
+          </button>
+        </div>
       </div>
 
       {/* Pending alert */}
