@@ -1574,6 +1574,41 @@ class WinePhotoHandler(FileSystemEventHandler):
         if not files:
             return
 
+        # ── Rattrapage des retardataires même scanId ───────────────────────────
+        # Si un fichier "ready" appartient à un scanId X (ex: scan_..._1.jpg),
+        # on cherche dans SOURCE tous les autres fichiers du MÊME scanId (ex: _2)
+        # et on les inclut dans ce batch, même s'ils n'ont pas encore atteint
+        # SETTLE. Ça évite qu'un recto + verso écrits à > SETTLE secondes
+        # d'écart (upload lent, Node non-atomique) soient traités en DEUX
+        # cycles distincts — ce qui causait 2 appels Ollama avec le MÊME
+        # scan_id et un échec sur le verso seul.
+        ready_scan_ids: set[str] = set()
+        for f in files:
+            sid = _extract_scan_id([f])
+            if sid:
+                ready_scan_ids.add(sid)
+
+        if ready_scan_ids:
+            known = {str(f) for f in files}
+            try:
+                for src in SOURCE.iterdir():
+                    if not src.is_file():
+                        continue
+                    if src.suffix.lower() not in IMAGE_EXTENSIONS:
+                        continue
+                    if str(src) in known:
+                        continue
+                    sid = _extract_scan_id([src])
+                    if sid and sid in ready_scan_ids:
+                        files.append(src)
+                        known.add(str(src))
+                        # Retire aussi du pending pour éviter un re-traitement
+                        with self._lock:
+                            self._pending.pop(str(src), None)
+                        log.info(f"Rattrapage {src.name} (même scanId que le batch)")
+            except Exception as e:
+                log.warning(f"Erreur lors du rattrapage de retardataires: {e}")
+
         log.info(f"Traitement de {len(files)} nouveau(x) fichier(s)")
         groups = group_photos(files)
         _run_batch(groups)
