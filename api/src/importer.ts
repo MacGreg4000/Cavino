@@ -8,6 +8,12 @@ import { wineImportSchema } from './schemas/wine-import.js';
 
 const PHOTOS_PATH = process.env.PHOTOS_PATH || '/photos';
 
+// ScanIds dont le vin a été supprimé manuellement — ne jamais réimporter
+const blockedScanIds = new Set<string>();
+export function blockScanId(scanId: string) {
+  blockedScanIds.add(scanId.trim());
+}
+
 interface ImportInput {
   jsonPath: string;
   photoPath: string | null;
@@ -38,6 +44,11 @@ export async function importWinePair({ jsonPath, photoPath }: ImportInput): Prom
 
     const data = parsed.data;
     const scanId = data.meta?.scanId?.trim() || null;
+
+    // ── Blocklist : scanId d'un vin supprimé manuellement ──────────────────
+    if (scanId && blockedScanIds.has(scanId)) {
+      return { success: false, error: `ScanId ${scanId} bloqué (vin supprimé manuellement)` };
+    }
 
     // ── Idempotence primaire : scanId UNIQUE ────────────────────────────────
     // Si ce scan a déjà produit une bouteille, on ne réimporte JAMAIS. Couvre :

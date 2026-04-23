@@ -6,6 +6,10 @@ import { z } from 'zod';
 import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
+import { blockScanId } from '../importer.js';
+
+const INBOX_PATH = process.env.INBOX_PATH || '/inbox';
+const PROCESSED_PATH = process.env.PROCESSED_PATH || '/processed';
 
 const wineUpdateSchema = z.object({
   name: z.string().optional(),
@@ -162,6 +166,12 @@ export async function wineRoutes(app: FastifyInstance) {
   app.delete('/api/wines/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
 
+    // Récupérer scanId + sourceFile avant suppression
+    const [wine] = await db.select({
+      scanId: wines.scanId,
+      sourceFile: wines.sourceFile,
+    }).from(wines).where(eq(wines.id, id)).limit(1);
+
     // Libérer les slots associés
     await db.update(gridSlots)
       .set({ wineId: null })
@@ -172,6 +182,20 @@ export async function wineRoutes(app: FastifyInstance) {
       .returning({ id: wines.id });
 
     if (!deleted) return reply.status(404).send({ error: 'Wine not found' });
+
+    // Bloquer la réimportation + purger les fichiers résiduels
+    if (wine?.scanId) {
+      blockScanId(wine.scanId);
+    }
+    if (wine?.sourceFile) {
+      for (const dir of [INBOX_PATH, PROCESSED_PATH]) {
+        const fp = path.join(dir, wine.sourceFile);
+        await fs.unlink(fp).catch(() => {});
+        // Chercher aussi dans le sous-dossier "Prêt à être importé"
+        await fs.unlink(path.join(dir, 'Prêt à être importé', wine.sourceFile)).catch(() => {});
+      }
+    }
+
     return { success: true };
   });
 
