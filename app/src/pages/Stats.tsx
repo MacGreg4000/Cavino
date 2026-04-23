@@ -73,13 +73,22 @@ export function Stats() {
     );
   }
 
-  const pieData = stats.byType
-    .filter((t) => t.type)
-    .map((t) => ({
-      name: toFr(t.type),
-      value: parseInt(t.totalQuantity) || t.count,
-      color: TYPE_COLORS[toFr(t.type)] || '#5C4F44',
-    }));
+  // Dédupliquer par type normalisé (l'API peut renvoyer 'rouge' + 'Rouge' si la
+  // casse varie en DB — on fusionne les quantités ici avant l'affichage).
+  const pieData = Object.values(
+    stats.byType
+      .filter((t) => t.type)
+      .reduce<Record<string, { name: string; value: number; color: string }>>((acc, t) => {
+        const key = toFr(t.type);
+        const qty = parseInt(t.totalQuantity) || t.count;
+        if (acc[key]) {
+          acc[key].value += qty;
+        } else {
+          acc[key] = { name: key, value: qty, color: TYPE_COLORS[key] || '#5C4F44' };
+        }
+        return acc;
+      }, {})
+  ).sort((a, b) => b.value - a.value);
 
   const regionData = stats.byRegion
     .filter((r) => r.region)
@@ -192,24 +201,22 @@ export function Stats() {
             <TrendingUp size={16} className="text-champagne" />
             <h3 className="text-sm font-semibold">Stock par type</h3>
           </div>
-          {stats.byType.length === 0 ? (
+          {pieData.length === 0 ? (
             <p className="text-sm text-text-muted">Aucune donnée</p>
           ) : (
             <div className="space-y-3">
-              {stats.byType.map((t) => {
+              {pieData.map((t) => {
                 const total = stats.totalBottles || 1;
-                const qty = parseInt(t.totalQuantity) || t.count;
-                const pct = Math.round((qty / total) * 100);
-                const fr = toFr(t.type);
+                const pct = Math.round((t.value / total) * 100);
                 return (
-                  <div key={t.type}>
+                  <div key={t.name}>
                     <div className="flex justify-between text-sm mb-1">
-                      <span className="text-text capitalize">{fr || 'Autre'}</span>
-                      <span className="text-text-secondary font-mono text-xs">{qty} ({pct}%)</span>
+                      <span className="text-text capitalize">{t.name || 'Autre'}</span>
+                      <span className="text-text-secondary font-mono text-xs">{t.value} ({pct}%)</span>
                     </div>
                     <div className="h-2 bg-surface-hover rounded-full overflow-hidden">
                       <div
-                        className={`h-full rounded-full transition-all ${BAR_TYPE_COLORS[fr] || 'bg-text-muted'}`}
+                        className={`h-full rounded-full transition-all ${BAR_TYPE_COLORS[t.name] || 'bg-text-muted'}`}
                         style={{ width: `${pct}%` }}
                       />
                     </div>
