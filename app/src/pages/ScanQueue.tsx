@@ -44,7 +44,7 @@ function ScanCard({ scan, onRemove, onMarkError }: { scan: QueuedScan; onRemove:
   };
 
   const stageIcon: Record<string, string> = {
-    start: '▶', convert: '⟳', ollama: '✦', validate: '✓', photo: '⊞', done: '●',
+    queued: '⏳', start: '▶', convert: '⟳', ollama: '✦', validate: '✓', photo: '⊞', done: '●',
   };
 
   return (

@@ -109,6 +109,8 @@ interface WineState {
   markScanError: (scanId?: string) => void;
   removeFromQueue: (scanId: string) => void;
   clearFinishedScans: () => void;
+  /** Charge la scanQueue depuis IndexedDB au démarrage de l'app. */
+  loadScanQueueFromCache: () => Promise<void>;
 
   // Legacy compat (used by AppLayout banner + ScanWine)
   /** @deprecated use scanQueue */
@@ -129,6 +131,13 @@ const API = '/api';
 
 // Lazy import offline DB to avoid blocking initial load
 const getOfflineDb = () => import('../lib/db').then((m) => m);
+
+// Persiste la scanQueue dans IndexedDB (best-effort, fire-and-forget).
+// Appelé dans chaque mutation du store pour que la queue survive à un
+// refresh de l'app pendant un scan en cours.
+const persistScanQueue = (queue: QueuedScan[]) => {
+  getOfflineDb().then(({ cacheScanQueue }) => cacheScanQueue(queue)).catch(() => {});
+};
 
 export const useWineStore = create<WineState>((set, get) => ({
   wines: [],
@@ -245,31 +254,38 @@ export const useWineStore = create<WineState>((set, get) => ({
 
   // ── Scan queue ───────────────────────────────────────────────────────────────
 
-  addToQueue: (scanId) => set((s) => ({
-    scanQueue: [
+  addToQueue: (scanId) => set((s) => {
+    const scanQueue = [
       ...s.scanQueue,
-      { scanId, startedAt: Date.now(), logs: [], status: 'uploading' },
-    ],
-  })),
+      { scanId, startedAt: Date.now(), logs: [], status: 'uploading' as const },
+    ];
+    persistScanQueue(scanQueue);
+    return { scanQueue };
+  }),
 
   addScanProgress: (scanId, entry) => set((s) => {
+    // Le stage 'queued' signifie que le scan est en file d'attente (pas encore
+    // traité par Ollama) — on garde le status 'uploading' pour l'UI sinon
+    // l'utilisateur voit "Analyse IA en cours" alors qu'il attend son tour.
+    const nextStatus = entry.stage === 'queued' ? 'uploading' as const : 'analyzing' as const;
+
     const exists = s.scanQueue.some((sc) => sc.scanId === scanId);
     if (exists) {
-      return {
-        scanQueue: s.scanQueue.map((scan) =>
-          scan.scanId === scanId
-            ? { ...scan, status: 'analyzing' as const, logs: [...scan.logs, entry] }
-            : scan
-        ),
-      };
+      const scanQueue = s.scanQueue.map((scan) =>
+        scan.scanId === scanId
+          ? { ...scan, status: nextStatus, logs: [...scan.logs, entry] }
+          : scan
+      );
+      persistScanQueue(scanQueue);
+      return { scanQueue };
     }
     // Unknown scanId (e.g. scan initiated on another device) — auto-add to queue
-    return {
-      scanQueue: [
-        ...s.scanQueue,
-        { scanId, startedAt: Date.now(), logs: [entry], status: 'analyzing' as const },
-      ],
-    };
+    const scanQueue = [
+      ...s.scanQueue,
+      { scanId, startedAt: Date.now(), logs: [entry], status: nextStatus },
+    ];
+    persistScanQueue(scanQueue);
+    return { scanQueue };
   }),
 
   // WINE_PENDING: match par scanId si fourni (précis), sinon FIFO (legacy).
@@ -293,6 +309,7 @@ export const useWineStore = create<WineState>((set, get) => ({
           ? { ...sc, status: 'done' as const, result: { status: 'success' as const, wine } }
           : sc
       );
+      persistScanQueue(newQueue);
       return {
         pending: alreadyPending ? s.pending : [wine, ...s.pending],
         pendingCount: alreadyPending ? s.pendingCount : s.pendingCount + 1,
@@ -312,16 +329,33 @@ export const useWineStore = create<WineState>((set, get) => ({
         ? { ...sc, status: 'error' as const, result: { status: 'error' as const, message: 'Échec de l\'analyse' } }
         : sc
     );
+    persistScanQueue(newQueue);
     return { scanQueue: newQueue };
   }),
 
-  removeFromQueue: (scanId) => set((s) => ({
-    scanQueue: s.scanQueue.filter((sc) => sc.scanId !== scanId),
-  })),
+  removeFromQueue: (scanId) => set((s) => {
+    const scanQueue = s.scanQueue.filter((sc) => sc.scanId !== scanId);
+    persistScanQueue(scanQueue);
+    return { scanQueue };
+  }),
 
-  clearFinishedScans: () => set((s) => ({
-    scanQueue: s.scanQueue.filter((sc) => sc.status === 'uploading' || sc.status === 'analyzing'),
-  })),
+  clearFinishedScans: () => set((s) => {
+    const scanQueue = s.scanQueue.filter((sc) => sc.status === 'uploading' || sc.status === 'analyzing');
+    persistScanQueue(scanQueue);
+    return { scanQueue };
+  }),
+
+  loadScanQueueFromCache: async () => {
+    try {
+      const { getCachedScanQueue } = await getOfflineDb();
+      const cached = await getCachedScanQueue();
+      if (cached.length > 0) {
+        set({ scanQueue: cached });
+      }
+    } catch {
+      // Dexie pas dispo (SSR, mode privé…) — silencieux
+    }
+  },
 
   // ── Legacy compat shims ──────────────────────────────────────────────────────
   setActiveScan: (scanId) => get().addToQueue(scanId),

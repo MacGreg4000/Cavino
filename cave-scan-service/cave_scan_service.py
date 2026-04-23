@@ -1420,6 +1420,56 @@ def _write_progress(scan_id: Optional[str], stage: str, message: str, level: str
 # queuing at Ollama level while confusing the frontend progress display.
 _PROCESSING_LOCK = threading.Lock()
 
+# File d'attente globale des scanId en attente/en cours de traitement.
+# Permet de communiquer la position à l'utilisateur AVANT que son scan passe
+# sous le lock. Protégé par _QUEUE_LOCK.
+# L'élément à l'index 0 est celui qui est (ou va être) traité juste après.
+_SCAN_QUEUE: list[str] = []
+_QUEUE_LOCK = threading.Lock()
+
+# Estimation du temps moyen par bouteille (en secondes) pour afficher un ETA.
+# Calibrée sur qwen3-vl:8b en local. Ajuster si le matériel change.
+_SECONDS_PER_BOTTLE = 180
+
+
+def _enqueue_scan(scan_id: Optional[str]) -> None:
+    """Inscrit un scan en file d'attente et broadcast sa position initiale."""
+    if not scan_id:
+        return
+    with _QUEUE_LOCK:
+        if scan_id in _SCAN_QUEUE:
+            return  # déjà en file (re-détection watchdog)
+        _SCAN_QUEUE.append(scan_id)
+        position = len(_SCAN_QUEUE)
+    if position > 1:
+        eta_min = max(1, ((position - 1) * _SECONDS_PER_BOTTLE) // 60)
+        _write_progress(
+            scan_id,
+            'queued',
+            f"Position {position} dans la file — {position - 1} scan(s) avant vous (~{eta_min} min d'attente)",
+        )
+
+
+def _dequeue_scan(scan_id: Optional[str]) -> None:
+    """Retire un scan de la file (fin de traitement) et met à jour les positions restantes."""
+    if not scan_id:
+        return
+    with _QUEUE_LOCK:
+        if scan_id in _SCAN_QUEUE:
+            _SCAN_QUEUE.remove(scan_id)
+        remaining = list(_SCAN_QUEUE)
+    # Réannonce leur nouvelle position aux scans encore en attente (i > 0 car
+    # l'index 0 est celui qui démarre maintenant, il a déjà son propre progrès)
+    for i, sid in enumerate(remaining):
+        if i == 0:
+            continue
+        eta_min = max(1, (i * _SECONDS_PER_BOTTLE) // 60)
+        _write_progress(
+            sid,
+            'queued',
+            f"Position {i + 1} dans la file — {i} scan(s) avant vous (~{eta_min} min d'attente)",
+        )
+
 
 def process_all_pending():
     """Process all images currently in SOURCE at startup."""
@@ -1443,13 +1493,27 @@ def _run_batch(groups: list[list[Path]]):
     total_photos  = sum(len(g) for g in groups)
     results: list[tuple] = []
 
+    # Enqueue TOUS les scans du batch immédiatement — avant même d'attendre
+    # le lock — pour que leur position soit annoncée au front le plus tôt
+    # possible (sinon le user voit 'uploading' sans feedback pendant N×3min).
+    scan_ids_in_batch: list[Optional[str]] = [_extract_scan_id(g) for g in groups]
+    for sid in scan_ids_in_batch:
+        _enqueue_scan(sid)
+
     with _PROCESSING_LOCK:
         today = date.today().isoformat()
         used_basenames: set[str] = set()
 
         for i, group in enumerate(groups, 1):
             log.info(f"Bouteille {i}/{total_bottles}")
-            result = process_group(group, today, used_basenames)
+            sid = scan_ids_in_batch[i - 1]
+            try:
+                result = process_group(group, today, used_basenames)
+            finally:
+                # Dequeue dans tous les cas (succès ou erreur) pour ne pas
+                # bloquer la file et permettre aux scans suivants de voir leur
+                # position correctement mise à jour.
+                _dequeue_scan(sid)
             results.append((i, *result))
 
     # Summary report

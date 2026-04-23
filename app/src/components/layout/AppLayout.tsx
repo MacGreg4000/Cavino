@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Sparkles, X, ChevronRight, CheckCircle } from 'lucide-react';
 import { BottomNav } from './BottomNav';
@@ -51,8 +52,15 @@ function ScanProgressBanner() {
   }
 
   // Still analyzing — show progress of the active one
-  const active = analyzing[analyzing.length - 1];
+  // On distingue "en cours" (analyzing) de "en file" (uploading) pour un
+  // feedback plus honnête quand plusieurs scans sont queued.
+  const running = scanQueue.filter((s) => s.status === 'analyzing');
+  const waiting = scanQueue.filter((s) => s.status === 'uploading');
+  const active = running[running.length - 1] ?? waiting[0] ?? analyzing[analyzing.length - 1];
   const lastLog = active?.logs[active.logs.length - 1];
+  const summary = running.length > 0
+    ? `${running.length} analyse${running.length > 1 ? 's' : ''} en cours${waiting.length > 0 ? ` · ${waiting.length} en attente` : ''}`
+    : `${waiting.length} scan${waiting.length > 1 ? 's' : ''} en attente`;
   return (
     <button
       className="mx-3 mb-2 w-[calc(100%-1.5rem)] flex items-center gap-3 px-3 py-2 bg-accent/10 border border-accent/20 rounded-[var(--radius-md)] hover:bg-accent/15 transition-colors"
@@ -61,7 +69,7 @@ function ScanProgressBanner() {
       <Sparkles size={14} className="text-accent-bright animate-pulse flex-shrink-0" />
       <div className="flex-1 min-w-0 text-left">
         <p className="text-xs font-medium text-text">
-          {analyzing.length} analyse{analyzing.length > 1 ? 's' : ''} en cours
+          {summary}
           {done.length > 0 ? ` · ${done.length} terminée${done.length > 1 ? 's' : ''}` : ''}
         </p>
         {lastLog && <p className="text-[11px] text-text-muted truncate">{lastLog.message}</p>}
@@ -74,6 +82,14 @@ function ScanProgressBanner() {
 export function AppLayout() {
   useWebSocket();
   const pendingCount = useWineStore((s) => s.pendingCount);
+  const loadScanQueueFromCache = useWineStore((s) => s.loadScanQueueFromCache);
+
+  // Restaure la file d'analyse depuis IndexedDB au démarrage — sinon, fermer
+  // la PWA pendant un scan faisait perdre tout le feedback UI même si le scan
+  // service continuait à tourner en arrière-plan.
+  useEffect(() => {
+    loadScanQueueFromCache();
+  }, [loadScanQueueFromCache]);
 
   return (
     <div className="flex-1 flex flex-col">
