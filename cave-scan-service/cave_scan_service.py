@@ -19,7 +19,7 @@ from datetime import date
 from typing import Optional
 
 import requests
-from PIL import Image
+from PIL import Image, ImageOps
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
@@ -416,6 +416,8 @@ def convert_to_jpeg(src: Path, upscale: bool = True) -> Optional[Path]:
     dest = TEMP / (src.stem + '_preview.jpg')
     try:
         img = Image.open(src)
+        # Respecte l'orientation EXIF (photos iPhone/Android souvent pivotées en métadonnées)
+        img = ImageOps.exif_transpose(img)
         if img.mode in ('RGBA', 'P', 'LA'):
             img = img.convert('RGB')
 
@@ -484,6 +486,42 @@ def merge_images_side_by_side(paths: list[Path], max_height: int = 1600) -> Path
     merged.save(out_path, 'JPEG', quality=90)
     log.info(f"Images fusionnées → {out_path.name} ({total_width}×{max_h}px)")
     return out_path
+
+
+# ─── URL hint scraping ───────────────────────────────────────────────────────────
+
+def extract_url_from_hint(hint: str) -> Optional[str]:
+    """Extrait la première URL http(s) trouvée dans le texte du hint."""
+    if not hint:
+        return None
+    m = re.search(r'https?://[^\s\'"<>\]\[]+', hint)
+    return m.group(0) if m else None
+
+
+def scrape_wine_text(url: str, max_chars: int = 3000) -> Optional[str]:
+    """Charge une page web (Vivino, Wine-Searcher, domaine…) et extrait le texte brut pertinent.
+    Retourne None si la page est inaccessible ou trop courte pour être utile.
+    """
+    try:
+        resp = requests.get(url, headers=WEB_HEADERS, timeout=15)
+        resp.raise_for_status()
+        html = resp.text
+    except Exception as e:
+        log.warning(f"URL hint inaccessible ({url}): {e}")
+        return None
+
+    # Supprimer les balises script / style avant de stripper le HTML
+    html_clean = re.sub(r'<(script|style)[^>]*>.*?</\1>', '', html, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<[^>]+>', ' ', html_clean)
+    text = re.sub(r'\s+', ' ', text).strip()
+
+    if len(text) < 100:
+        return None
+
+    if len(text) > max_chars:
+        text = text[:max_chars] + '…'
+
+    return text
 
 
 # ─── Ollama prompt ────────────────────────────────────────────────────────────────
@@ -610,7 +648,7 @@ CHAMPAGNES et CRÉMANTS — enrichissements obligatoires dans identity.mentions 
 Retourne UNIQUEMENT le JSON, rien d'autre."""
 
 
-def analyze_with_ollama(jpeg_paths: list[Path], hint: Optional[str] = None) -> Optional[dict]:
+def analyze_with_ollama(jpeg_paths: list[Path], hint: Optional[str] = None, web_context: Optional[str] = None, web_url: Optional[str] = None) -> Optional[dict]:
     """Send images to Ollama vision model, return parsed wine dict or None."""
     today = date.today().isoformat()
 
@@ -694,6 +732,14 @@ def analyze_with_ollama(jpeg_paths: list[Path], hint: Optional[str] = None) -> O
                 "le <user_hint> fait foi. Si le hint parle d'un prix/cépage/année absent de l'étiquette, "
                 "utilise-le tel quel.\n\n"
                 if hint else ""
+            ) + (
+                f"<web_context source=\"{web_url}\">\n{web_context}\n</web_context>\n"
+                "Le bloc <web_context> ci-dessus contient le texte extrait de la page web fournie dans le hint. "
+                "Utilise ces données pour enrichir et valider ta réponse : cépages, millésime, appellation, "
+                "description, notes de dégustation, accords, prix du marché. "
+                "En cas de contradiction avec l'étiquette, le <web_context> est prioritaire si la page vient "
+                "d'un site de référence (Vivino, Wine-Searcher, site du domaine).\n\n"
+                if web_context else ""
             ) + prompt,
             "images": images_b64,
         },
@@ -1044,13 +1090,23 @@ def fetch_photo_from_wine_page(page_url: str) -> Optional[tuple[bytes, str]]:
     return data, ext
 
 
-def search_official_photo(wine: dict, scan_bytes: Optional[bytes]) -> Optional[tuple[bytes, str]]:
+def search_official_photo(wine: dict, scan_bytes: Optional[bytes], priority_url: Optional[str] = None) -> Optional[tuple[bytes, str]]:
     """
     Find the official bottle photo by scraping wine pages found via SearXNG web search.
     Strategy: search for the wine on Vivino/Wine-Searcher web pages, then extract
     the bottle image from the page HTML (og:image, etc.).
     This mimics what a human does: Google → Vivino page → right-click save image.
+    Si priority_url est fourni (URL extraite du hint utilisateur), il est essayé en premier.
     """
+    # Essai prioritaire : URL fournie dans le hint (Vivino, Wine-Searcher, site du domaine…)
+    if priority_url:
+        log.info(f"📎 Essai photo depuis URL hint: {priority_url}")
+        photo = fetch_photo_from_wine_page(priority_url)
+        if photo:
+            log.info(f"✓ Photo trouvée directement via URL hint")
+            return photo
+        log.info(f"  Aucune photo sur l'URL hint — recherche SearXNG en fallback")
+
     identity = wine.get('identity', {})
     domain  = identity.get('domain', '') or ''
     name    = identity.get('name', '') or ''
@@ -1196,10 +1252,26 @@ def process_group(
         except Exception as e:
             log.warning(f"Impossible de lire le fichier hint : {e}")
 
+    # Détection et scraping d'une URL dans le hint (Vivino, Wine-Searcher, site du domaine…)
+    hint_url: Optional[str] = None
+    web_context: Optional[str] = None
+    if hint:
+        hint_url = extract_url_from_hint(hint)
+        if hint_url:
+            log.info(f"URL détectée dans le hint: {hint_url}")
+            _write_progress(scan_id, 'ollama', f"Chargement de la page web : {hint_url[:60]}…")
+            web_context = scrape_wine_text(hint_url)
+            if web_context:
+                log.info(f"Contexte web extrait : {len(web_context)} caractères")
+                _write_progress(scan_id, 'ollama', f"Contexte web chargé ({len(web_context)} chars)")
+            else:
+                log.warning(f"Impossible d'extraire du texte de {hint_url}")
+                _write_progress(scan_id, 'ollama', "Page web inaccessible — analyse sans contexte web", 'warning')
+
     # Analyze with Ollama
     log.info(f"Envoi à Ollama ({len(jpegs)} image(s))...")
     _write_progress(scan_id, 'ollama', f"Envoi au modèle IA ({OLLAMA_MODEL})…")
-    wine_data = analyze_with_ollama(jpegs, hint=hint)
+    wine_data = analyze_with_ollama(jpegs, hint=hint, web_context=web_context, web_url=hint_url)
 
     if wine_data is None:
         _cleanup_temp(jpegs)
@@ -1237,8 +1309,9 @@ def process_group(
     _write_progress(scan_id, 'validate', f"Confiance {confidence} — {wine_label}")
 
     # Search official photo via web scraping (Vivino, Wine-Searcher, etc.)
+    # Si le hint contenait une URL, on l'essaie en priorité avant SearXNG
     _write_progress(scan_id, 'photo', "Recherche de la photo officielle…")
-    photo_result = search_official_photo(wine_data, None)
+    photo_result = search_official_photo(wine_data, None, priority_url=hint_url)
 
     # Prépare les chemins de sortie
     DEST.mkdir(parents=True, exist_ok=True)
