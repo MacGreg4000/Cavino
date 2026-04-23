@@ -23,7 +23,10 @@ const progressDir = () => path.join(INBOX_PATH, '.progress');
 export async function replayProgressForClient(ws: WebSocket): Promise<void> {
   if (ws.readyState !== 1) return;
 
-  // 1. Replay last progress line for each active scan
+  // 1. Replay ALL progress lines for each active scan.
+  //    Le frontend déduplique par `ts` donc il est safe d'envoyer toutes les
+  //    lignes — un client qui se reconnecte récupère le log complet sans créer
+  //    de doublons visuels, même si certaines lignes avaient déjà été reçues.
   try {
     const dir = progressDir();
     const files = await fs.readdir(dir).catch(() => [] as string[]);
@@ -34,11 +37,14 @@ export async function replayProgressForClient(ws: WebSocket): Promise<void> {
         const content = await fs.readFile(fp, 'utf-8');
         const lines = content.split('\n').map((l: string) => l.trim()).filter(Boolean);
         if (lines.length === 0) continue;
-        const lastLine = lines[lines.length - 1];
-        const entry = JSON.parse(lastLine);
         const scanId = path.basename(f, '.jsonl');
-        if (ws.readyState === 1) {
-          ws.send(JSON.stringify({ type: 'SCAN_PROGRESS', scanId, ...entry }));
+        for (const rawLine of lines) {
+          try {
+            const entry = JSON.parse(rawLine);
+            if (ws.readyState === 1) {
+              ws.send(JSON.stringify({ type: 'SCAN_PROGRESS', scanId, ...entry }));
+            }
+          } catch { /* ligne malformée */ }
         }
       } catch { /* malformed */ }
     }

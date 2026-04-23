@@ -271,11 +271,16 @@ export const useWineStore = create<WineState>((set, get) => ({
 
     const exists = s.scanQueue.some((sc) => sc.scanId === scanId);
     if (exists) {
-      const scanQueue = s.scanQueue.map((scan) =>
-        scan.scanId === scanId
-          ? { ...scan, status: nextStatus, logs: [...scan.logs, entry] }
-          : scan
-      );
+      const scanQueue = s.scanQueue.map((scan) => {
+        if (scan.scanId !== scanId) return scan;
+        // Déduplication par timestamp : le watcher Node rejoue la dernière ligne
+        // du .jsonl à chaque reconnexion WebSocket (replay pour rattrapage).
+        // Sans ce guard, chaque décrochage wifi pendant un long appel Ollama
+        // ajoutait un doublon "Envoi au modèle IA" dans les logs affichés.
+        const alreadySeen = scan.logs.some((l) => l.ts === entry.ts);
+        if (alreadySeen) return scan;
+        return { ...scan, status: nextStatus, logs: [...scan.logs, entry] };
+      });
       persistScanQueue(scanQueue);
       return { scanQueue };
     }
