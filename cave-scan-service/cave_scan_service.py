@@ -498,6 +498,53 @@ def extract_url_from_hint(hint: str) -> Optional[str]:
     return m.group(0) if m else None
 
 
+def searxng_search_wine_context(query: str) -> tuple[Optional[str], Optional[str]]:
+    """Recherche proactive SearXNG avant l'appel Ollama pour enrichir le contexte.
+
+    Utilisée quand le hint contient du texte mais pas d'URL : on cherche le vin
+    sur Vivino/Wine-Searcher, on scrape la page, et on passe le texte à Ollama.
+    Cela permet de corriger des erreurs de type (rouge vs blanc) ou de nom
+    (Befira vs Zefiro) avant même que le modèle voie les images.
+
+    Retourne (web_context, page_url) ou (None, None) si rien de pertinent.
+    """
+    trusted_domains = [
+        'vivino.com', 'wine-searcher.com', 'vinatis.com',
+        'idealwine.com', 'idealwine.net', 'millesima.fr',
+    ]
+    # Deux requêtes : d'abord ciblée Vivino, puis générale vin
+    queries = [
+        f"{query} site:vivino.com",
+        f"{query} vin blanc rouge rosé",
+    ]
+    for q in queries:
+        log.info(f"Pré-analyse SearXNG: «{q}»")
+        try:
+            resp = requests.get(
+                f"{SEARXNG_URL}/search",
+                params={'q': q, 'format': 'json', 'language': 'fr'},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            results = resp.json().get('results', [])
+        except Exception as e:
+            log.warning(f"SearXNG pré-analyse erreur: {e}")
+            continue
+
+        for result in results[:5]:
+            page_url = result.get('url', '')
+            if not page_url:
+                continue
+            if not any(d in page_url for d in trusted_domains):
+                continue
+            context = scrape_wine_text(page_url)
+            if context:
+                log.info(f"Contexte web pré-Ollama trouvé: {page_url} ({len(context)} chars)")
+                return context, page_url
+
+    return None, None
+
+
 def scrape_wine_text(url: str, max_chars: int = 3000) -> Optional[str]:
     """Charge une page web (Vivino, Wine-Searcher, domaine…) et extrait le texte brut pertinent.
     Retourne None si la page est inaccessible ou trop courte pour être utile.
@@ -736,11 +783,14 @@ def analyze_with_ollama(jpeg_paths: list[Path], hint: Optional[str] = None, web_
                 if hint else ""
             ) + (
                 f"<web_context source=\"{web_url}\">\n{web_context}\n</web_context>\n"
-                "Le bloc <web_context> ci-dessus contient le texte extrait de la page web fournie dans le hint. "
-                "Utilise ces données pour enrichir et valider ta réponse : cépages, millésime, appellation, "
-                "description, notes de dégustation, accords, prix du marché. "
-                "En cas de contradiction avec l'étiquette, le <web_context> est prioritaire si la page vient "
-                "d'un site de référence (Vivino, Wine-Searcher, site du domaine).\n\n"
+                "Le bloc <web_context> ci-dessus est extrait d'une page Vivino ou Wine-Searcher correspondant à ce vin. "
+                "C'est une SOURCE DE VÉRITÉ ABSOLUE pour les champs suivants — ils ÉCRASENT toute déduction visuelle :\n"
+                "  • identity.type (rouge/blanc/rosé/champagne…) — si la page parle de 'blanc' ou 'white' ou 'Blanc de Blancs', identity.type = 'blanc'\n"
+                "  • identity.grapes (cépages réels de l'appellation)\n"
+                "  • identity.appellation (appellation officielle complète)\n"
+                "  • identity.name et identity.domain si clairement mentionnés\n"
+                "  • purchase.estimatedValue (prix du marché Vivino/Wine-Searcher)\n"
+                "Utilise aussi ces données pour : description, notes de dégustation, accords, millésime.\n\n"
                 if web_context else ""
             ) + prompt,
             "images": images_b64,
@@ -1269,6 +1319,21 @@ def process_group(
             else:
                 log.warning(f"Impossible d'extraire du texte de {hint_url}")
                 _write_progress(scan_id, 'ollama', "Page web inaccessible — analyse sans contexte web", 'warning')
+
+    # Recherche web proactive si le hint n'avait pas d'URL :
+    # On cherche le vin sur Vivino/Wine-Searcher AVANT d'appeler Ollama pour
+    # corriger les erreurs de type (rouge vs blanc) ou de nom avant l'analyse IA.
+    if not web_context and hint:
+        hint_text_only = re.sub(r'https?://\S+', '', hint).strip()
+        if len(hint_text_only) > 4:
+            _write_progress(scan_id, 'ollama', "Recherche web du vin…")
+            pre_context, pre_url = searxng_search_wine_context(hint_text_only)
+            if pre_context:
+                web_context = pre_context
+                hint_url = pre_url  # utilisé aussi comme priority_url pour la photo
+                _write_progress(scan_id, 'ollama', f"Contexte web trouvé ({len(pre_context)} chars)")
+            else:
+                _write_progress(scan_id, 'ollama', "Aucun contexte web — analyse par image seule")
 
     # Analyze with Ollama
     log.info(f"Envoi à Ollama ({len(jpegs)} image(s))...")
