@@ -119,6 +119,7 @@ export function ScanWine() {
   const doneCount = scanQueue.filter((s) => s.status === 'done').length;
 
   const handleAnalyse = async () => {
+    if (!recto || uploading) return;   // garde double-submit
     if (!recto) {
       toast('error', 'La photo recto est requise');
       return;
@@ -213,7 +214,7 @@ export function ScanWine() {
           </div>
         )}
 
-        <Button variant="primary" className="w-full" disabled={!recto} loading={uploading} onClick={handleAnalyse}>
+        <Button variant="primary" className="w-full" disabled={!recto || uploading} loading={uploading} onClick={handleAnalyse}>
           <Sparkles size={16} /> Analyser
         </Button>
       </div>

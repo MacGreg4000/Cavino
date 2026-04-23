@@ -130,16 +130,27 @@ export async function importWinePair({ jsonPath, photoPath }: ImportInput): Prom
       medal: a.score ?? a.medal ?? undefined,
     }));
 
+    // Normaliser le nom/domaine (ALL CAPS → Initcap, type → français)
+    const toInitcap = (s: string | null | undefined) =>
+      s ? s.replace(/\b\w+/g, (w) => w === w.toUpperCase() && w.length > 1
+        ? w.charAt(0) + w.slice(1).toLowerCase() : w) : undefined;
+    const typeNormMap: Record<string, string> = {
+      red: 'rouge', white: 'blanc', rose: 'rosé', sparkling: 'effervescent',
+      'pétillant': 'effervescent', sweet: 'moelleux', dessert: 'liquoreux',
+    };
+    const rawType = data.identity.type?.toLowerCase().trim() ?? '';
+    const normalizedType = typeNormMap[rawType] ?? (data.identity.type ?? undefined);
+
     const [inserted] = await db.insert(wines).values({
       id: wineId,
 
       // Identité
-      name: data.identity.name,
-      domain: data.identity.domain ?? undefined,
+      name: toInitcap(data.identity.name) ?? data.identity.name,
+      domain: toInitcap(data.identity.domain) ?? undefined,
       appellation: data.identity.appellation ?? undefined,
       vintage: data.identity.vintage ?? undefined,
       nonVintage: data.identity.nonVintage ?? undefined,
-      type: data.identity.type ?? undefined,
+      type: normalizedType,
       grapes: data.identity.grapes?.filter(Boolean) ?? [],
       country: data.identity.country ?? undefined,
       region: data.identity.region ?? undefined,

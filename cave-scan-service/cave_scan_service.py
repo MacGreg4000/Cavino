@@ -555,6 +555,8 @@ RÈGLE ABSOLUE ANTI-HALLUCINATION :
 - Tous les textes SANS EXCEPTION doivent être rédigés en FRANÇAIS : description, accords, arômes, notes, agingNotes, style, occasions, glassType.
 - country, region, subRegion : utiliser les noms français (Italie pas Italy, Vénétie pas Veneto, Espagne pas Spain).
 - subRegion : toujours renseigner si connue (ex: Valpolicella pour un Amarone, Montagne de Reims pour Verzenay).
+- "type" : OBLIGATOIREMENT l'une de ces valeurs EN FRANÇAIS : rouge, blanc, rosé, champagne, crémant, moelleux, liquoreux, effervescent. JAMAIS "red", "white", "rose", "sparkling" ou toute autre valeur en anglais.
+- "name" (et "domain") : écrire en casse mixte normale (Majuscule initiale), JAMAIS EN MAJUSCULES COMPLÈTES sauf si l'étiquette l'exige.
 
 SCHÉMA OBLIGATOIRE — tous les champs sont requis, champs inconnus → null, JAMAIS inventés :
 
