@@ -91,9 +91,21 @@ export async function processInboxJsonFile(jsonPath: string): Promise<ProcessInb
       return 'imported';
     }
 
+    // ── Doublon détecté : déplacer en processed (pas en erreur), notifier
+    //    le front que c'est un rejet métier — pas un échec technique.
+    //    L'IA a bien fonctionné, la bouteille existe simplement déjà dans la cave.
+    if (result.isDuplicate) {
+      await moveFile(jsonPath, PROCESSED_PATH);
+      if (photoPath) await moveFile(photoPath, PROCESSED_PATH);
+      broadcast({ type: 'IMPORT_DUPLICATE', error: result.error, file: baseName, scanId: result.scanId ?? null });
+      console.warn(`⚠️  Doublon ${baseName}: ${result.error}`);
+      return 'imported'; // pas une erreur, juste un skip
+    }
+
     await moveFile(jsonPath, ERRORS_PATH);
     if (photoPath) await moveFile(photoPath, ERRORS_PATH);
-    broadcast({ type: 'IMPORT_ERROR', error: result.error, file: baseName });
+    // Inclure le scanId pour que le front marque le BON scan en erreur (au lieu du premier FIFO)
+    broadcast({ type: 'IMPORT_ERROR', error: result.error, file: baseName, scanId: result.scanId ?? null });
     console.error(`❌ Erreur import ${baseName}: ${result.error}`);
     return 'error';
   } catch (e) {

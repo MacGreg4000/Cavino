@@ -21,7 +21,7 @@ interface ImportInput {
 
 export type ImportResult =
   | { success: true; wine: Record<string, unknown> & { id: string; name: string; scanId: string | null }; alreadyImported?: boolean }
-  | { success: false; error: string };
+  | { success: false; error: string; scanId?: string | null; isDuplicate?: boolean };
 
 /** Normalise un texte pour comparaison insensible à la casse et aux diacritiques. */
 function normalize(s: string | null | undefined): string {
@@ -47,7 +47,7 @@ export async function importWinePair({ jsonPath, photoPath }: ImportInput): Prom
 
     // ── Blocklist : scanId d'un vin supprimé manuellement ──────────────────
     if (scanId && blockedScanIds.has(scanId)) {
-      return { success: false, error: `ScanId ${scanId} bloqué (vin supprimé manuellement)` };
+      return { success: false, error: `ScanId ${scanId} bloqué (vin supprimé manuellement)`, scanId };
     }
 
     // ── Idempotence primaire : scanId UNIQUE ────────────────────────────────
@@ -90,7 +90,7 @@ export async function importWinePair({ jsonPath, photoPath }: ImportInput): Prom
         return true;
       });
       if (existing) {
-        return { success: false, error: `Doublon détecté : "${existing.name}" existe déjà dans la cave` };
+        return { success: false, error: `Doublon détecté : "${existing.name}" existe déjà dans la cave`, scanId, isDuplicate: true };
       }
     }
 
@@ -212,8 +212,8 @@ export async function importWinePair({ jsonPath, photoPath }: ImportInput): Prom
     // Avec la contrainte UNIQUE(scan_id), Postgres remontera une erreur `23505`.
     const message = err instanceof Error ? err.message : 'Unknown error';
     if (message.includes('scan_id') || message.includes('23505')) {
-      return { success: false, error: 'Déjà importé (race)' };
+      return { success: false, error: 'Déjà importé (race)', scanId: undefined };
     }
-    return { success: false, error: message };
+    return { success: false, error: message, scanId: undefined };
   }
 }

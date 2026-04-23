@@ -64,6 +64,7 @@ export interface Wine {
 
 export type ScanResult =
   | { status: 'success'; wine: Wine }
+  | { status: 'duplicate'; message: string }
   | { status: 'error'; message: string };
 
 export interface ScanProgressEntry {
@@ -107,6 +108,7 @@ interface WineState {
   addScanProgress: (scanId: string, entry: ScanProgressEntry) => void;
   addPendingFromWs: (wine: Wine, scanId?: string | null) => void;
   markScanError: (scanId?: string) => void;
+  markScanDuplicate: (scanId?: string | null) => void;
   removeFromQueue: (scanId: string) => void;
   clearFinishedScans: () => void;
   /** Charge la scanQueue depuis IndexedDB au démarrage de l'app. */
@@ -323,7 +325,7 @@ export const useWineStore = create<WineState>((set, get) => ({
     });
   },
 
-  // IMPORT_ERROR: match FIFO to the oldest still-analyzing scan
+  // IMPORT_ERROR: match par scanId si dispo, sinon FIFO
   markScanError: (scanId) => set((s) => {
     const idx = scanId
       ? s.scanQueue.findIndex((sc) => sc.scanId === scanId)
@@ -332,6 +334,22 @@ export const useWineStore = create<WineState>((set, get) => ({
     const newQueue = s.scanQueue.map((sc, i) =>
       i === idx
         ? { ...sc, status: 'error' as const, result: { status: 'error' as const, message: 'Échec de l\'analyse' } }
+        : sc
+    );
+    persistScanQueue(newQueue);
+    return { scanQueue: newQueue };
+  }),
+
+  // IMPORT_DUPLICATE: l'IA a réussi mais la bouteille est déjà dans la cave.
+  // On marque le scan "done" avec un résultat spécial plutôt qu'en erreur.
+  markScanDuplicate: (scanId) => set((s) => {
+    const idx = scanId
+      ? s.scanQueue.findIndex((sc) => sc.scanId === scanId)
+      : s.scanQueue.findIndex((sc) => sc.status === 'analyzing' || sc.status === 'uploading');
+    if (idx === -1) return s;
+    const newQueue = s.scanQueue.map((sc, i) =>
+      i === idx
+        ? { ...sc, status: 'done' as const, result: { status: 'duplicate' as const, message: 'Déjà dans la cave' } }
         : sc
     );
     persistScanQueue(newQueue);

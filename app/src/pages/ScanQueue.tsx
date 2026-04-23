@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Sparkles, CheckCircle, AlertCircle, Clock, ChevronRight, X, ChevronDown, Trash2, RefreshCw } from 'lucide-react';
+import { Sparkles, CheckCircle, AlertCircle, Clock, ChevronRight, X, ChevronDown, Trash2, RefreshCw, Copy } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Button } from '../components/ui/Button';
 import { useWineStore, type QueuedScan } from '../stores/wine';
@@ -20,19 +20,25 @@ function ScanCard({ scan, onRemove, onMarkError }: { scan: QueuedScan; onRemove:
     && (Date.now() - lastActivity > WARN_THRESHOLD_MS);
   const lastLog = scan.logs[scan.logs.length - 1];
 
-  const statusIcon = {
-    uploading: <Clock size={16} className="text-text-muted" />,
-    analyzing: <Sparkles size={16} className="text-accent-bright animate-pulse" />,
-    done: <CheckCircle size={16} className="text-success" />,
-    error: <AlertCircle size={16} className="text-danger" />,
-  }[scan.status];
+  const isDuplicate = scan.result?.status === 'duplicate';
 
-  const statusLabel = {
-    uploading: 'En attente…',
-    analyzing: 'Analyse IA en cours…',
-    done: 'Terminé',
-    error: 'Échec',
-  }[scan.status];
+  const statusIcon = isDuplicate
+    ? <Copy size={16} className="text-warning" />
+    : {
+      uploading: <Clock size={16} className="text-text-muted" />,
+      analyzing: <Sparkles size={16} className="text-accent-bright animate-pulse" />,
+      done: <CheckCircle size={16} className="text-success" />,
+      error: <AlertCircle size={16} className="text-danger" />,
+    }[scan.status];
+
+  const statusLabel = isDuplicate
+    ? 'Déjà dans la cave'
+    : {
+      uploading: 'En attente…',
+      analyzing: 'Analyse IA en cours…',
+      done: 'Terminé',
+      error: 'Échec',
+    }[scan.status];
 
   const wineName = scan.result?.status === 'success' ? scan.result.wine.name : null;
   const wineId = scan.result?.status === 'success' ? scan.result.wine.id : null;
@@ -49,7 +55,8 @@ function ScanCard({ scan, onRemove, onMarkError }: { scan: QueuedScan; onRemove:
 
   return (
     <div className={`rounded-[var(--radius-lg)] border overflow-hidden ${
-      scan.status === 'done' ? 'border-success/30 bg-success/5'
+      isDuplicate ? 'border-warning/30 bg-warning/5'
+      : scan.status === 'done' ? 'border-success/30 bg-success/5'
       : scan.status === 'error' ? 'border-danger/20 bg-danger/5'
       : 'border-border bg-surface'
     }`}>
@@ -100,6 +107,11 @@ function ScanCard({ scan, onRemove, onMarkError }: { scan: QueuedScan; onRemove:
       {/* Error message */}
       {scan.status === 'error' && scan.result?.status === 'error' && (
         <p className="px-4 pb-3 text-xs text-danger">{scan.result.message}</p>
+      )}
+
+      {/* Duplicate message */}
+      {isDuplicate && (
+        <p className="px-4 pb-3 text-xs text-warning">Cette bouteille est déjà présente dans ta cave.</p>
       )}
 
       {/* Stale warning */}
