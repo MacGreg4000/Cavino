@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Thermometer, Clock, GlassWater, Grape, MapPin, Award, Trash2,
-  QrCode, Copy, Check, UtensilsCrossed, ExternalLink, Maximize2, X, PencilLine, Wine as WineIcon, Camera, Pencil
+  QrCode, Copy, Check, UtensilsCrossed, ExternalLink, Maximize2, X, PencilLine, Wine as WineIcon, Camera, Pencil, Star, MessageSquare
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { PageHeader } from '../components/layout/PageHeader';
@@ -313,6 +313,152 @@ function QRSection({ wine }: { wine: Wine }) {
   );
 }
 
+// ─── Star Rating ──────────────────────────────────────────────────────────────
+
+function StarRating({ value, onChange, loading }: {
+  value: number;
+  onChange: (v: number) => void;
+  loading?: boolean;
+}) {
+  const [hovered, setHovered] = useState(0);
+  const display = hovered || value;
+  return (
+    <div className="flex gap-1" onMouseLeave={() => setHovered(0)}>
+      {[1, 2, 3, 4, 5].map((star) => (
+        <button
+          key={star}
+          type="button"
+          disabled={loading}
+          onClick={() => onChange(star === value ? 0 : star)}
+          onMouseEnter={() => setHovered(star)}
+          className={`p-0.5 transition-transform active:scale-90 ${loading ? 'opacity-50' : 'hover:scale-110'}`}
+          aria-label={`${star} étoile${star > 1 ? 's' : ''}`}
+        >
+          <Star
+            size={28}
+            className={`transition-colors ${
+              star <= display
+                ? 'fill-gold text-gold'
+                : 'fill-transparent text-border'
+            }`}
+          />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function RatingSection({ wine, onUpdate }: { wine: Wine; onUpdate: (updated: Wine) => void }) {
+  const { updateWine } = useWineStore();
+  const { toast } = useToast();
+  const [rating, setRating] = useState(wine.personalRating ?? 0);
+  const [notes, setNotes] = useState(wine.tastingNotes ?? '');
+  const [showNotes, setShowNotes] = useState(!!(wine.tastingNotes));
+  const [ratingLoading, setRatingLoading] = useState(false);
+  const [notesLoading, setNotesLoading] = useState(false);
+  const notesDirty = notes !== (wine.tastingNotes ?? '');
+  const notesDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Sync if parent wine changes (e.g. after save)
+  useEffect(() => {
+    setRating(wine.personalRating ?? 0);
+    setNotes(wine.tastingNotes ?? '');
+    setShowNotes(!!(wine.tastingNotes));
+  }, [wine.id]);
+
+  const handleRating = async (stars: number) => {
+    setRating(stars);
+    setRatingLoading(true);
+    try {
+      const updated = await updateWine(wine.id, { personalRating: stars });
+      onUpdate(updated);
+    } catch {
+      setRating(wine.personalRating ?? 0); // revert
+      toast('error', 'Erreur lors de la sauvegarde');
+    }
+    setRatingLoading(false);
+  };
+
+  const handleSaveNotes = async (value: string) => {
+    setNotesLoading(true);
+    try {
+      const updated = await updateWine(wine.id, { tastingNotes: value });
+      onUpdate(updated);
+      toast('success', 'Note sauvegardée');
+    } catch {
+      toast('error', 'Erreur lors de la sauvegarde');
+    }
+    setNotesLoading(false);
+  };
+
+  const handleNotesChange = (value: string) => {
+    setNotes(value);
+    // Auto-save after 2s of inactivity
+    if (notesDebounceRef.current) clearTimeout(notesDebounceRef.current);
+    notesDebounceRef.current = setTimeout(() => handleSaveNotes(value), 2000);
+  };
+
+  return (
+    <Card>
+      <div className="flex items-center gap-2 mb-3">
+        <Star size={16} className="text-gold" />
+        <h3 className="text-sm font-semibold">Ma note</h3>
+        {rating > 0 && (
+          <span className="ml-auto text-xs text-text-muted">{rating}/5</span>
+        )}
+      </div>
+
+      <StarRating value={rating} onChange={handleRating} loading={ratingLoading} />
+
+      {/* Note de dégustation */}
+      {!showNotes ? (
+        <button
+          type="button"
+          onClick={() => setShowNotes(true)}
+          className="mt-3 flex items-center gap-1.5 text-xs text-text-muted hover:text-text transition-colors"
+        >
+          <MessageSquare size={13} />
+          Ajouter une note de dégustation
+        </button>
+      ) : (
+        <div className="mt-3 space-y-2">
+          <textarea
+            value={notes}
+            onChange={(e) => handleNotesChange(e.target.value)}
+            placeholder="Arômes, bouche, finale… vos impressions à la dégustation"
+            rows={3}
+            className="w-full bg-surface-hover border border-border rounded-[var(--radius-sm)] px-3 py-2 text-sm text-text placeholder:text-text-muted resize-none focus:outline-none focus:border-accent transition-colors"
+          />
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => { setShowNotes(false); setNotes(''); handleSaveNotes(''); }}
+              className="text-xs text-text-muted hover:text-text transition-colors"
+            >
+              Supprimer
+            </button>
+            {notesDirty && (
+              <button
+                type="button"
+                onClick={() => { if (notesDebounceRef.current) clearTimeout(notesDebounceRef.current); handleSaveNotes(notes); }}
+                disabled={notesLoading}
+                className="text-xs text-accent hover:text-accent-bright transition-colors font-medium disabled:opacity-50"
+              >
+                {notesLoading ? 'Sauvegarde…' : 'Sauvegarder'}
+              </button>
+            )}
+            {!notesDirty && notes && (
+              <span className="text-xs text-success flex items-center gap-1">
+                <Check size={11} /> Sauvegardé
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export function WineDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -561,6 +707,9 @@ export function WineDetail() {
             </button>
           </div>
         </div>
+
+        {/* Ma note */}
+        <RatingSection wine={wine} onUpdate={setWine} />
 
         {/* Description */}
         {wine.description && (
