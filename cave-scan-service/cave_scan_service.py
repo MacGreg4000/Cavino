@@ -1231,13 +1231,18 @@ def search_official_photo(wine: dict, scan_bytes: Optional[bytes], priority_url:
     # Ignorer les mots trop courts ou trop génériques
     query_keywords = [k for k in query_keywords if len(k) > 3 and k not in ('wine', 'vino', 'vin', 'rouge', 'blanc', 'rose', 'brut')]
 
-    trusted_domains = ['vivino.com', 'wine-searcher.com', 'vinatis.com', 'idealwine.com', 'millesima.fr']
+    trusted_domains = [
+        'vivino.com', 'wine-searcher.com',
+        'vinatis.com', 'idealwine.com', 'idealwine.net', 'millesima.fr',
+        'cellartracker.com', 'wine.com', 'wineshop.be', 'vinando.com',
+    ]
 
     # Requêtes par ordre de précision décroissante
-    # La 1re requête ciblée Vivino, puis sans restriction de site
     queries_phase1 = [
         f"{wine_query} site:vivino.com",
         f"{wine_query} site:wine-searcher.com",
+        f"{wine_query} site:vinatis.com",
+        f"{wine_query} site:idealwine.com",
     ]
     queries_phase2 = [
         f"{wine_query} vivino vin",
@@ -1286,14 +1291,64 @@ def search_official_photo(wine: dict, scan_bytes: Optional[bytes], priority_url:
                     return photo
         return None
 
-    # Phase 1 : recherche ciblée + vérification stricte de pertinence
+    def _try_image_search(query: str) -> Optional[tuple[bytes, str]]:
+        """Phase 3 : recherche d'images directe via SearXNG (équivalent Google Images).
+
+        Retourne l'URL directe de l'image, sans passer par une page intermédiaire.
+        Les résultats ont un champ 'img_src' qui contient l'URL de l'image originale.
+        On filtre par ratio hauteur/largeur pour ne garder que les images de bouteilles
+        (format portrait, ratio > 1.3) et on rejette les images trop petites.
+        """
+        log.info(f"SearXNG images: «{query}»")
+        try:
+            resp = requests.get(
+                f"{SEARXNG_URL}/search",
+                params={'q': query, 'format': 'json', 'category': 'images', 'language': 'fr'},
+                timeout=12,
+            )
+            resp.raise_for_status()
+            results = resp.json().get('results', [])
+        except Exception as e:
+            log.warning(f"SearXNG images erreur: {e}")
+            return None
+
+        for result in results[:10]:
+            img_src = result.get('img_src', '') or result.get('thumbnail_src', '')
+            if not img_src or not _is_complete_image_url(img_src):
+                continue
+
+            # Vérification de pertinence sur le contexte de l'image
+            if query_keywords and not _result_matches_query(result, query_keywords):
+                continue
+
+            log.info(f"  Image directe: {img_src[:80]}")
+            data, ratio, ext = download_and_score(img_src)
+            if data is None:
+                continue
+
+            # Les bouteilles de vin sont en format portrait (hauteur > largeur)
+            if ratio < 1.1:
+                log.debug(f"  Ratio {ratio:.2f} trop faible (pas une bouteille) — ignorée")
+                continue
+
+            log.info(f"✓ Photo image search ({len(data)//1024} KB, ratio {ratio:.2f})")
+            return data, ext
+
+        return None
+
+    # Phase 1 : sites de confiance, pertinence stricte
     photo = _try_queries(queries_phase1, strict_relevance=True)
     if photo:
         return photo
 
-    # Phase 2 : requêtes plus larges + pertinence souple
-    # (utile pour les vins dont le nom est abrégé ou mal orthographié dans les URLs)
+    # Phase 2 : requêtes libres sur sites de confiance, pertinence souple
     photo = _try_queries(queries_phase2, strict_relevance=bool(query_keywords))
+    if photo:
+        return photo
+
+    # Phase 3 : recherche d'images directe (Google Images / Bing Images via SearXNG)
+    # Fallback pour les vins obscurs ou locaux absents des bases de données vin
+    photo = _try_image_search(f"{wine_query} bouteille vin")
     if photo:
         return photo
 
