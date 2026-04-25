@@ -101,6 +101,10 @@ export function Settings() {
           <div className="space-y-1.5 text-sm text-text-secondary">
             <div className="flex justify-between">
               <span>Bouteilles en cave</span>
+              <span className="font-mono">{wines.reduce((sum, w) => sum + (w.quantity || 0), 0)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Références distinctes</span>
               <span className="font-mono">{wines.length}</span>
             </div>
             <div className="flex justify-between">
