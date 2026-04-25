@@ -27,15 +27,16 @@ const PDF_TEMPLATES: { value: PdfTemplate; label: string; description: string }[
 
 export function Settings() {
   const { locations, fetchLocations } = useLocationStore();
-  const wines = useWineStore((s) => s.wines);
-  const pendingCount = useWineStore((s) => s.pendingCount);
+  const { wines, pendingCount, fetchWines, fetchPending } = useWineStore();
   const [pdfLoading, setPdfLoading] = useState(false);
   const [pdfTemplate, setPdfTemplate] = useState<PdfTemplate>('v1');
   const { toast } = useToast();
 
   useEffect(() => {
     fetchLocations();
-  }, [fetchLocations]);
+    fetchWines();
+    fetchPending();
+  }, [fetchLocations, fetchWines, fetchPending]);
 
   const handleDownloadPdf = async () => {
     setPdfLoading(true);

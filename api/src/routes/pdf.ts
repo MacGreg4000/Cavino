@@ -424,11 +424,6 @@ function buildHTMLv2(allWines: Record<string, any>[], photosPath: string, title:
     const desc    = esc(trunc(w.description || w.palate || '', 320));
     const awards  = (w.awards as Array<{name: string}> | null) || [];
 
-    const price = w.purchasePrice
-      ? `${parseFloat(w.purchasePrice).toFixed(2).replace('.', ',')} €`
-      : w.estimatedValue
-      ? `≈ ${parseFloat(w.estimatedValue).toFixed(2).replace('.', ',')} €`
-      : '';
     const qty = w.quantity ? `×${w.quantity}` : '';
 
     const timeline = drinkTimeline(w);
@@ -458,10 +453,7 @@ function buildHTMLv2(allWines: Record<string, any>[], photosPath: string, title:
       <div class="wine-info">
         <div class="wine-header">
           <div class="wine-name">${name}${vintage ? `<span class="vintage">${vintage}</span>` : ''}</div>
-          <div class="wine-right">
-            ${price ? `<div class="wine-price">${price}</div>` : ''}
-            ${qty   ? `<div class="wine-qty">${qty}</div>`     : ''}
-          </div>
+          ${qty ? `<div class="wine-qty">${qty}</div>` : ''}
         </div>
         ${grapeHtml ? `<div class="wine-grapes-line">${grapeHtml}</div>` : ''}
         ${appel ? `<div class="wine-appellation">${appel}</div>` : ''}
@@ -626,9 +618,7 @@ function buildHTMLv2(allWines: Record<string, any>[], photosPath: string, title:
 
   .vintage { font-weight: 400; color: #B58D3D; }
 
-  .wine-right { text-align: right; flex-shrink: 0; }
-  .wine-price { font-size: 15px; font-weight: 700; color: #111827; white-space: nowrap; }
-  .wine-qty   { font-size: 11px; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
+  .wine-qty { font-size: 11px; color: #9CA3AF; font-weight: 600; letter-spacing: 0.05em; flex-shrink: 0; }
 
   .wine-grapes-line { font-size: 12px; margin-bottom: 4px; }
   .grapes  { font-weight: 600; color: #B58D3D; }
