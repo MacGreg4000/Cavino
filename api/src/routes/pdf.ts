@@ -377,6 +377,312 @@ ${sections}
 </html>`;
 }
 
+// ─── V2 HTML template (grande photo + saut de page par section) ───────────────
+
+function buildHTMLv2(allWines: Record<string, any>[], photosPath: string, title: string): string {
+  const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+  const year  = new Date().getFullYear();
+
+  const TYPE_ORDER_V2 = ['rouge', 'blanc', 'rosé', 'rose', 'champagne', 'mousseux',
+                         'pétillant', 'moelleux', 'fortifié', 'spiritueux', 'autre'];
+  const TYPE_LABELS: Record<string, string> = {
+    rouge: 'Vins Rouges', blanc: 'Vins Blancs', rosé: 'Vins Rosés',
+    rose: 'Vins Rosés', champagne: 'Champagnes & Crémants',
+    mousseux: 'Vins Mousseux', pétillant: 'Pétillants Naturels',
+    moelleux: 'Vins Moelleux & Liquoreux', fortifié: 'Vins Fortifiés',
+    spiritueux: 'Spiritueux', autre: 'Autres',
+  };
+  const TYPE_ACCENT: Record<string, string> = {
+    rouge: '#8B1A1A', blanc: '#B58D3D', rosé: '#C2185B',
+    rose: '#C2185B', champagne: '#92400E', mousseux: '#92400E',
+    pétillant: '#065F46', moelleux: '#5B21B6', fortifié: '#3730A3',
+    spiritueux: '#374151', autre: '#374151',
+  };
+
+  const byType = new Map<string, typeof allWines>();
+  for (const w of allWines) {
+    const t = (w.type || 'autre').toLowerCase();
+    if (!byType.has(t)) byType.set(t, []);
+    byType.get(t)!.push(w);
+  }
+  const seen = new Set<string>();
+  const ordered = [...TYPE_ORDER_V2, ...byType.keys()].filter(t => {
+    if (seen.has(t) || !byType.has(t)) return false;
+    seen.add(t); return true;
+  });
+
+  let sections = '';
+  let isFirst  = true;
+
+  for (const wineType of ordered) {
+    const list   = byType.get(wineType)!;
+    const label  = (TYPE_LABELS[wineType] || wineType).toUpperCase();
+    const accent = TYPE_ACCENT[wineType] || '#8B1A1A';
+    // Saut de page avant chaque section (sauf la première)
+    const breakStyle = isFirst ? '' : 'page-break-before:always;';
+    isFirst = false;
+
+    sections += `<div class="section-header" style="${breakStyle}border-left:4px solid ${accent};">
+      <span class="section-title" style="color:${accent};">${esc(label)}</span>
+      <span class="section-count">${list.length} bouteille${list.length > 1 ? 's' : ''}</span>
+    </div>\n`;
+
+    for (const w of list) {
+      const imgSrc  = photoBase64(w.photoUrl, photosPath);
+      const name    = esc(trunc(w.name || 'Sans nom', 60));
+      const vintage = w.vintage ? ` — ${w.vintage}` : (w.nonVintage ? ' — NV' : '');
+      const grapes  = ((w.grapes as string[] | null) || []).join(', ');
+      const region  = [w.region, w.country].filter(Boolean).join(', ');
+      const appel   = esc(w.appellation || '');
+      const desc    = esc(trunc(w.description || w.palate || '', 280));
+      const awards  = (w.awards as Array<{name:string}> | null) || [];
+
+      const price = w.purchasePrice
+        ? `${parseFloat(w.purchasePrice).toFixed(2).replace('.', ',')} €`
+        : w.estimatedValue
+        ? `≈ ${parseFloat(w.estimatedValue).toFixed(2).replace('.', ',')} €`
+        : '';
+      const qty = w.quantity ? `×${w.quantity}` : '';
+
+      const timeline = drinkTimeline(w);
+      let badges = `<span class="badge" style="${typeBadgeStyle(w.type)}">${esc(w.type || 'autre')}</span>`;
+      const ds = drinkStatus(w);
+      if (ds) badges += `<span class="badge" style="${ds.style}">${ds.label}</span>`;
+      if (awards.length) badges += `<span class="badge" style="background:#FEF3C7;color:#92400E">★ ${esc(awards[0].name)}</span>`;
+
+      // Étoiles perso
+      let starsHtml = '';
+      const rating = w.personalRating as number | null;
+      if (rating && rating > 0) {
+        const stars = [1,2,3,4,5].map(s =>
+          `<span style="color:${s <= rating ? '#B58D3D' : '#D1D5DB'};font-size:12px;">★</span>`
+        ).join('');
+        starsHtml = `<div style="margin-top:3px;">${stars}</div>`;
+      }
+
+      const photoEl = imgSrc
+        ? `<img src="${imgSrc}" alt="${name}" />`
+        : `<div class="photo-placeholder">🍷</div>`;
+
+      const grapeHtml = grapes
+        ? `<span class="grapes">Cépage${grapes.includes(',') ? 's' : ''} : ${esc(grapes)}</span>${region ? `<span class="region"> | ${esc(region)}</span>` : ''}`
+        : region ? `<span class="region">${esc(region)}</span>` : '';
+
+      sections += `
+      <div class="wine-card">
+        <div class="wine-photo">${photoEl}</div>
+        <div class="wine-info">
+          <div class="wine-header">
+            <div class="wine-name">${name}${vintage ? `<span class="vintage">${vintage}</span>` : ''}</div>
+            <div class="wine-right">
+              ${price ? `<div class="wine-price">${price}</div>` : ''}
+              ${qty   ? `<div class="wine-qty">${qty}</div>`     : ''}
+            </div>
+          </div>
+          ${grapeHtml ? `<div class="wine-grapes-line">${grapeHtml}</div>` : ''}
+          ${appel ? `<div class="wine-appellation">${appel}</div>` : ''}
+          ${desc  ? `<div class="wine-desc">${desc}</div>` : ''}
+          ${timeline}
+          <div class="wine-badges">${badges}</div>
+          ${starsHtml}
+        </div>
+      </div>`;
+    }
+  }
+
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Liberation Sans', 'Noto Sans', Arial, sans-serif;
+    background: white;
+    color: #111827;
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
+  @page {
+    size: A4;
+    margin: 12mm 15mm 14mm 15mm;
+  }
+
+  /* ── Header ── */
+  header { border-top: 3px solid #8B1A1A; padding-top: 14px; margin-bottom: 6px; }
+
+  .header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-bottom: 10px;
+  }
+
+  .cave-name {
+    font-size: 26px;
+    font-weight: 300;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #111827;
+  }
+
+  .header-meta { color: #9CA3AF; font-size: 10px; text-align: right; }
+  .header-rule { border: none; border-top: 1px solid #E5E7EB; margin-bottom: 5px; }
+  .header-sub  { color: #9CA3AF; font-size: 10px; letter-spacing: 0.05em; }
+
+  /* ── Section ── */
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #F9FAFB;
+    border-top: 1px solid #E5E7EB;
+    border-bottom: 1px solid #E5E7EB;
+    padding: 8px 12px;
+    margin-top: 18px;
+    margin-bottom: 4px;
+    page-break-after: avoid;
+  }
+
+  .section-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+  }
+
+  .section-count {
+    font-size: 9px;
+    color: #9CA3AF;
+    letter-spacing: 0.05em;
+  }
+
+  /* ── Wine card V2 (grande photo) ── */
+  .wine-card {
+    display: flex;
+    gap: 18px;
+    padding: 16px 0;
+    border-bottom: 1px solid #F3F4F6;
+    page-break-inside: avoid;
+  }
+
+  /* Photo — plus grande */
+  .wine-photo { width: 84px; flex-shrink: 0; }
+  .wine-photo img {
+    width: 84px;
+    height: 126px;
+    object-fit: contain;
+    object-position: center;
+    background: #F9FAFB;
+    border: 1px solid #E5E7EB;
+    display: block;
+  }
+  .photo-placeholder {
+    width: 84px;
+    height: 126px;
+    background: #F9FAFB;
+    border: 1px solid #E5E7EB;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 30px;
+    color: #D1D5DB;
+  }
+
+  /* Info */
+  .wine-info { flex: 1; min-width: 0; }
+
+  .wine-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 4px;
+  }
+
+  .wine-name {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #111827;
+    flex: 1;
+    line-height: 1.3;
+  }
+
+  .vintage { font-weight: 400; color: #B58D3D; }
+
+  .wine-right { text-align: right; flex-shrink: 0; }
+  .wine-price { font-size: 14px; font-weight: 700; color: #111827; white-space: nowrap; }
+  .wine-qty   { font-size: 10px; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
+
+  .wine-grapes-line { font-size: 11px; margin-bottom: 3px; }
+  .grapes  { font-weight: 600; color: #B58D3D; }
+  .region  { color: #9CA3AF; font-style: italic; }
+
+  .wine-appellation { font-size: 10px; color: #6B7280; margin-bottom: 3px; }
+
+  .wine-desc {
+    font-size: 10.5px;
+    color: #6B7280;
+    font-style: italic;
+    line-height: 1.5;
+    margin-bottom: 6px;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .wine-badges { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+  .badge {
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 8.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+
+  /* Footer */
+  footer {
+    margin-top: 18px;
+    padding-top: 10px;
+    border-top: 1px solid #E5E7EB;
+    text-align: center;
+    color: #9CA3AF;
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  @media print {
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    .wine-card      { page-break-inside: avoid; }
+    .section-header { page-break-after: avoid; page-break-before: inherit; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-top">
+    <div class="cave-name">${esc(title)}</div>
+    <div class="header-meta">${allWines.length} référence${allWines.length > 1 ? 's' : ''}  ·  ${today}</div>
+  </div>
+  <hr class="header-rule">
+  <div class="header-sub">Carte des Vins — Format Illustré</div>
+</header>
+
+${sections}
+
+<footer>${esc(title)} — ${year}</footer>
+
+</body>
+</html>`;
+}
+
 // ─── Route ────────────────────────────────────────────────────────────────────
 const TYPE_ORDER = ['rouge', 'blanc', 'rosé', 'rose', 'champagne', 'mousseux',
                     'pétillant', 'moelleux', 'fortifié', 'spiritueux', 'autre'];
@@ -385,6 +691,7 @@ export async function pdfRoutes(app: FastifyInstance) {
   app.get('/api/pdf/wine-list', async (req, reply) => {
     const photosPath = process.env.PHOTOS_PATH || '/photos';
     const caveTitle  = process.env.CAVE_TITLE  || 'Ma Cave';
+    const { template } = (req.query as Record<string, string>);
 
     const allWines = await db.select().from(wines)
       .where(eq(wines.importStatus, 'available'))
@@ -393,7 +700,9 @@ export async function pdfRoutes(app: FastifyInstance) {
     if (!allWines.length)
       return reply.status(404).send({ error: 'Aucun vin disponible' });
 
-    const html = buildHTML(allWines as Record<string, any>[], photosPath, caveTitle);
+    const html = template === 'v2'
+      ? buildHTMLv2(allWines as Record<string, any>[], photosPath, caveTitle)
+      : buildHTML(allWines as Record<string, any>[], photosPath, caveTitle);
 
     const browser = await puppeteer.launch({
       executablePath: CHROME,
@@ -417,8 +726,9 @@ export async function pdfRoutes(app: FastifyInstance) {
         margin: { top: '12mm', right: '15mm', bottom: '14mm', left: '15mm' },
       });
 
+      const filename = template === 'v2' ? 'carte-des-vins-illustree.pdf' : 'carte-des-vins.pdf';
       reply.raw.setHeader('Content-Type', 'application/pdf');
-      reply.raw.setHeader('Content-Disposition', 'inline; filename="carte-des-vins.pdf"');
+      reply.raw.setHeader('Content-Disposition', `inline; filename="${filename}"`);
       reply.raw.end(pdf);
     } finally {
       await browser.close();
