@@ -377,7 +377,9 @@ ${sections}
 </html>`;
 }
 
-// ─── V2 HTML template (grande photo + saut de page par section) ───────────────
+// ─── V2 HTML template (4 par page, grande photo + saut de page par section) ───
+
+const PAGE_SIZE = 4; // bouteilles par page
 
 function buildHTMLv2(allWines: Record<string, any>[], photosPath: string, title: string): string {
   const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
@@ -411,82 +413,97 @@ function buildHTMLv2(allWines: Record<string, any>[], photosPath: string, title:
     seen.add(t); return true;
   });
 
-  let sections = '';
-  let isFirst  = true;
+  // Helper : construit le HTML d'une fiche vin
+  const wineCard = (w: Record<string, any>) => {
+    const imgSrc  = photoBase64(w.photoUrl, photosPath);
+    const name    = esc(trunc(w.name || 'Sans nom', 60));
+    const vintage = w.vintage ? ` — ${w.vintage}` : (w.nonVintage ? ' — NV' : '');
+    const grapes  = ((w.grapes as string[] | null) || []).join(', ');
+    const region  = [w.region, w.country].filter(Boolean).join(', ');
+    const appel   = esc(w.appellation || '');
+    const desc    = esc(trunc(w.description || w.palate || '', 320));
+    const awards  = (w.awards as Array<{name: string}> | null) || [];
+
+    const price = w.purchasePrice
+      ? `${parseFloat(w.purchasePrice).toFixed(2).replace('.', ',')} €`
+      : w.estimatedValue
+      ? `≈ ${parseFloat(w.estimatedValue).toFixed(2).replace('.', ',')} €`
+      : '';
+    const qty = w.quantity ? `×${w.quantity}` : '';
+
+    const timeline = drinkTimeline(w);
+    let badges = `<span class="badge" style="${typeBadgeStyle(w.type)}">${esc(w.type || 'autre')}</span>`;
+    const ds = drinkStatus(w);
+    if (ds) badges += `<span class="badge" style="${ds.style}">${ds.label}</span>`;
+    if (awards.length) badges += `<span class="badge" style="background:#FEF3C7;color:#92400E">★ ${esc(awards[0].name)}</span>`;
+
+    const rating = w.personalRating as number | null;
+    const starsHtml = (rating && rating > 0)
+      ? `<div style="margin-top:4px;">${[1,2,3,4,5].map(s =>
+          `<span style="color:${s <= rating ? '#B58D3D' : '#D1D5DB'};font-size:13px;">★</span>`
+        ).join('')}</div>`
+      : '';
+
+    const photoEl = imgSrc
+      ? `<img src="${imgSrc}" alt="${name}" />`
+      : `<div class="photo-placeholder">🍷</div>`;
+
+    const grapeHtml = grapes
+      ? `<span class="grapes">Cépage${grapes.includes(',') ? 's' : ''} : ${esc(grapes)}</span>${region ? `<span class="region"> | ${esc(region)}</span>` : ''}`
+      : region ? `<span class="region">${esc(region)}</span>` : '';
+
+    return `
+    <div class="wine-card">
+      <div class="wine-photo">${photoEl}</div>
+      <div class="wine-info">
+        <div class="wine-header">
+          <div class="wine-name">${name}${vintage ? `<span class="vintage">${vintage}</span>` : ''}</div>
+          <div class="wine-right">
+            ${price ? `<div class="wine-price">${price}</div>` : ''}
+            ${qty   ? `<div class="wine-qty">${qty}</div>`     : ''}
+          </div>
+        </div>
+        ${grapeHtml ? `<div class="wine-grapes-line">${grapeHtml}</div>` : ''}
+        ${appel ? `<div class="wine-appellation">${appel}</div>` : ''}
+        ${desc  ? `<div class="wine-desc">${desc}</div>` : ''}
+        ${timeline}
+        <div class="wine-badges">${badges}</div>
+        ${starsHtml}
+      </div>
+    </div>`;
+  };
+
+  // Construction par groupes de PAGE_SIZE avec saut de page explicite
+  let pages = '';
+  let isVeryFirst = true;
 
   for (const wineType of ordered) {
     const list   = byType.get(wineType)!;
     const label  = (TYPE_LABELS[wineType] || wineType).toUpperCase();
     const accent = TYPE_ACCENT[wineType] || '#8B1A1A';
-    // Saut de page avant chaque section (sauf la première)
-    const breakStyle = isFirst ? '' : 'page-break-before:always;';
-    isFirst = false;
 
-    sections += `<div class="section-header" style="${breakStyle}border-left:4px solid ${accent};">
-      <span class="section-title" style="color:${accent};">${esc(label)}</span>
-      <span class="section-count">${list.length} bouteille${list.length > 1 ? 's' : ''}</span>
-    </div>\n`;
+    // Découper la section en pages de PAGE_SIZE
+    for (let i = 0; i < list.length; i += PAGE_SIZE) {
+      const batch      = list.slice(i, i + PAGE_SIZE);
+      const isFirst    = i === 0;
+      const pageBreak  = isVeryFirst ? '' : 'page-break-before:always;';
+      isVeryFirst      = false;
 
-    for (const w of list) {
-      const imgSrc  = photoBase64(w.photoUrl, photosPath);
-      const name    = esc(trunc(w.name || 'Sans nom', 60));
-      const vintage = w.vintage ? ` — ${w.vintage}` : (w.nonVintage ? ' — NV' : '');
-      const grapes  = ((w.grapes as string[] | null) || []).join(', ');
-      const region  = [w.region, w.country].filter(Boolean).join(', ');
-      const appel   = esc(w.appellation || '');
-      const desc    = esc(trunc(w.description || w.palate || '', 280));
-      const awards  = (w.awards as Array<{name:string}> | null) || [];
+      let pageHtml = `<div style="${pageBreak}">`;
 
-      const price = w.purchasePrice
-        ? `${parseFloat(w.purchasePrice).toFixed(2).replace('.', ',')} €`
-        : w.estimatedValue
-        ? `≈ ${parseFloat(w.estimatedValue).toFixed(2).replace('.', ',')} €`
-        : '';
-      const qty = w.quantity ? `×${w.quantity}` : '';
-
-      const timeline = drinkTimeline(w);
-      let badges = `<span class="badge" style="${typeBadgeStyle(w.type)}">${esc(w.type || 'autre')}</span>`;
-      const ds = drinkStatus(w);
-      if (ds) badges += `<span class="badge" style="${ds.style}">${ds.label}</span>`;
-      if (awards.length) badges += `<span class="badge" style="background:#FEF3C7;color:#92400E">★ ${esc(awards[0].name)}</span>`;
-
-      // Étoiles perso
-      let starsHtml = '';
-      const rating = w.personalRating as number | null;
-      if (rating && rating > 0) {
-        const stars = [1,2,3,4,5].map(s =>
-          `<span style="color:${s <= rating ? '#B58D3D' : '#D1D5DB'};font-size:12px;">★</span>`
-        ).join('');
-        starsHtml = `<div style="margin-top:3px;">${stars}</div>`;
+      // En-tête de section : seulement sur la 1re page de chaque section
+      if (isFirst) {
+        pageHtml += `
+        <div class="section-header" style="border-left:4px solid ${accent};">
+          <span class="section-title" style="color:${accent};">${esc(label)}</span>
+          <span class="section-count">${list.length} bouteille${list.length > 1 ? 's' : ''}</span>
+        </div>`;
       }
 
-      const photoEl = imgSrc
-        ? `<img src="${imgSrc}" alt="${name}" />`
-        : `<div class="photo-placeholder">🍷</div>`;
+      for (const w of batch) pageHtml += wineCard(w);
 
-      const grapeHtml = grapes
-        ? `<span class="grapes">Cépage${grapes.includes(',') ? 's' : ''} : ${esc(grapes)}</span>${region ? `<span class="region"> | ${esc(region)}</span>` : ''}`
-        : region ? `<span class="region">${esc(region)}</span>` : '';
-
-      sections += `
-      <div class="wine-card">
-        <div class="wine-photo">${photoEl}</div>
-        <div class="wine-info">
-          <div class="wine-header">
-            <div class="wine-name">${name}${vintage ? `<span class="vintage">${vintage}</span>` : ''}</div>
-            <div class="wine-right">
-              ${price ? `<div class="wine-price">${price}</div>` : ''}
-              ${qty   ? `<div class="wine-qty">${qty}</div>`     : ''}
-            </div>
-          </div>
-          ${grapeHtml ? `<div class="wine-grapes-line">${grapeHtml}</div>` : ''}
-          ${appel ? `<div class="wine-appellation">${appel}</div>` : ''}
-          ${desc  ? `<div class="wine-desc">${desc}</div>` : ''}
-          ${timeline}
-          <div class="wine-badges">${badges}</div>
-          ${starsHtml}
-        </div>
-      </div>`;
+      pageHtml += `</div>`;
+      pages += pageHtml;
     }
   }
 
@@ -511,7 +528,7 @@ function buildHTMLv2(allWines: Record<string, any>[], photosPath: string, title:
   }
 
   /* ── Header ── */
-  header { border-top: 3px solid #8B1A1A; padding-top: 14px; margin-bottom: 6px; }
+  header { border-top: 3px solid #8B1A1A; padding-top: 14px; margin-bottom: 8px; }
 
   .header-top {
     display: flex;
@@ -532,7 +549,7 @@ function buildHTMLv2(allWines: Record<string, any>[], photosPath: string, title:
   .header-rule { border: none; border-top: 1px solid #E5E7EB; margin-bottom: 5px; }
   .header-sub  { color: #9CA3AF; font-size: 10px; letter-spacing: 0.05em; }
 
-  /* ── Section ── */
+  /* ── Section header ── */
   .section-header {
     display: flex;
     align-items: center;
@@ -541,9 +558,7 @@ function buildHTMLv2(allWines: Record<string, any>[], photosPath: string, title:
     border-top: 1px solid #E5E7EB;
     border-bottom: 1px solid #E5E7EB;
     padding: 8px 12px;
-    margin-top: 18px;
-    margin-bottom: 4px;
-    page-break-after: avoid;
+    margin-bottom: 2px;
   }
 
   .section-title {
@@ -558,20 +573,19 @@ function buildHTMLv2(allWines: Record<string, any>[], photosPath: string, title:
     letter-spacing: 0.05em;
   }
 
-  /* ── Wine card V2 (grande photo) ── */
+  /* ── Wine card V2 — 4 par page, grande photo ── */
   .wine-card {
     display: flex;
-    gap: 18px;
-    padding: 16px 0;
-    border-bottom: 1px solid #F3F4F6;
-    page-break-inside: avoid;
+    gap: 20px;
+    padding: 14px 0;
+    border-bottom: 1px solid #F0F0F0;
   }
 
-  /* Photo — plus grande */
-  .wine-photo { width: 84px; flex-shrink: 0; }
+  /* Photo 120×182px */
+  .wine-photo { width: 120px; flex-shrink: 0; }
   .wine-photo img {
-    width: 84px;
-    height: 126px;
+    width: 120px;
+    height: 182px;
     object-fit: contain;
     object-position: center;
     background: #F9FAFB;
@@ -579,14 +593,14 @@ function buildHTMLv2(allWines: Record<string, any>[], photosPath: string, title:
     display: block;
   }
   .photo-placeholder {
-    width: 84px;
-    height: 126px;
+    width: 120px;
+    height: 182px;
     background: #F9FAFB;
     border: 1px solid #E5E7EB;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 30px;
+    font-size: 38px;
     color: #D1D5DB;
   }
 
@@ -598,11 +612,11 @@ function buildHTMLv2(allWines: Record<string, any>[], photosPath: string, title:
     justify-content: space-between;
     align-items: flex-start;
     gap: 10px;
-    margin-bottom: 4px;
+    margin-bottom: 5px;
   }
 
   .wine-name {
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 700;
     text-transform: uppercase;
     color: #111827;
@@ -613,32 +627,32 @@ function buildHTMLv2(allWines: Record<string, any>[], photosPath: string, title:
   .vintage { font-weight: 400; color: #B58D3D; }
 
   .wine-right { text-align: right; flex-shrink: 0; }
-  .wine-price { font-size: 14px; font-weight: 700; color: #111827; white-space: nowrap; }
-  .wine-qty   { font-size: 10px; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
+  .wine-price { font-size: 15px; font-weight: 700; color: #111827; white-space: nowrap; }
+  .wine-qty   { font-size: 11px; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
 
-  .wine-grapes-line { font-size: 11px; margin-bottom: 3px; }
+  .wine-grapes-line { font-size: 12px; margin-bottom: 4px; }
   .grapes  { font-weight: 600; color: #B58D3D; }
   .region  { color: #9CA3AF; font-style: italic; }
 
-  .wine-appellation { font-size: 10px; color: #6B7280; margin-bottom: 3px; }
+  .wine-appellation { font-size: 11px; color: #6B7280; margin-bottom: 4px; }
 
   .wine-desc {
-    font-size: 10.5px;
+    font-size: 11px;
     color: #6B7280;
     font-style: italic;
-    line-height: 1.5;
-    margin-bottom: 6px;
+    line-height: 1.55;
+    margin-bottom: 7px;
     display: -webkit-box;
-    -webkit-line-clamp: 3;
+    -webkit-line-clamp: 4;
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
 
   .wine-badges { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
   .badge {
-    padding: 2px 8px;
+    padding: 2px 9px;
     border-radius: 999px;
-    font-size: 8.5px;
+    font-size: 9px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -659,8 +673,6 @@ function buildHTMLv2(allWines: Record<string, any>[], photosPath: string, title:
 
   @media print {
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    .wine-card      { page-break-inside: avoid; }
-    .section-header { page-break-after: avoid; page-break-before: inherit; }
   }
 </style>
 </head>
@@ -675,7 +687,7 @@ function buildHTMLv2(allWines: Record<string, any>[], photosPath: string, title:
   <div class="header-sub">Carte des Vins — Format Illustré</div>
 </header>
 
-${sections}
+${pages}
 
 <footer>${esc(title)} — ${year}</footer>
 
