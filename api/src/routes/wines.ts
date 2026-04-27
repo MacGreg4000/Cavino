@@ -12,52 +12,21 @@ const INBOX_PATH = process.env.INBOX_PATH || '/inbox';
 const PROCESSED_PATH = process.env.PROCESSED_PATH || '/processed';
 
 const wineUpdateSchema = z.object({
-  // Identité
-  name: z.string().min(1).optional(),
-  domain: z.string().optional().nullable(),
-  appellation: z.string().optional().nullable(),
-  vintage: z.number().int().optional().nullable(),
-  nonVintage: z.boolean().optional(),
-  type: z.string().optional().nullable(),
-  grapes: z.array(z.string()).optional().nullable(),
-  country: z.string().optional().nullable(),
-  region: z.string().optional().nullable(),
-  subRegion: z.string().optional().nullable(),
-  classification: z.string().optional().nullable(),
-  mentions: z.array(z.string()).optional().nullable(),
-  // alcohol accepte string ou number (numeric DB) et null
-  alcohol: z.union([z.string(), z.number()]).optional().nullable(),
-  bottleSize: z.union([z.string(), z.number()]).optional().nullable(),
-  // Stock
+  name: z.string().optional(),
+  domain: z.string().optional(),
+  appellation: z.string().optional(),
+  vintage: z.number().int().optional(),
+  type: z.string().optional(),
   quantity: z.number().int().min(0).optional(),
-  locationId: z.string().uuid().optional().nullable(),
+  locationId: z.string().uuid().optional(),
   slotIds: z.array(z.string()).optional(),
-  purchasePrice: z.union([z.string(), z.number()]).optional().nullable(),
-  estimatedValue: z.union([z.string(), z.number()]).optional().nullable(),
-  source: z.string().optional().nullable(),
-  // Service
-  servingTempMin: z.number().int().optional().nullable(),
-  servingTempMax: z.number().int().optional().nullable(),
-  decanting: z.boolean().optional(),
-  decantingTime: z.number().int().optional().nullable(),
-  glassType: z.string().optional().nullable(),
-  // Garde
-  drinkFrom: z.number().int().optional().nullable(),
-  drinkUntil: z.number().int().optional().nullable(),
-  peakFrom: z.number().int().optional().nullable(),
-  peakUntil: z.number().int().optional().nullable(),
-  agingNotes: z.string().optional().nullable(),
-  // Description
-  description: z.string().optional().nullable(),
-  palate: z.string().optional().nullable(),
-  style: z.string().optional().nullable(),
-  // Perso
-  personalRating: z.number().int().min(0).max(5).optional().nullable(),
-  tastingNotes: z.string().optional().nullable(),
+  purchasePrice: z.number().optional(),
+  personalRating: z.number().int().min(0).max(100).optional(),
+  tastingNotes: z.string().optional(),
   personalComment: z.string().max(10000).optional().nullable(),
   isFavorite: z.boolean().optional(),
   importStatus: z.enum(['pending', 'available', 'consumed']).optional(),
-});
+}).passthrough();
 
 const validateSchema = z.object({
   quantity: z.number().int().min(1),
@@ -101,7 +70,7 @@ export async function wineRoutes(app: FastifyInstance) {
       ...body,
       importStatus: 'available',
     };
-    if (body.purchasePrice !== undefined && body.purchasePrice !== null) insert.purchasePrice = body.purchasePrice.toString();
+    if (body.purchasePrice !== undefined) insert.purchasePrice = body.purchasePrice.toString();
     if ((body as Record<string, unknown>).bottleSize !== undefined) insert.bottleSize = String((body as Record<string, unknown>).bottleSize);
 
     if (!insert.name) return reply.status(400).send({ error: 'Le nom est requis' });

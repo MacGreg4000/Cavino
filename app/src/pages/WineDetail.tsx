@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Thermometer, Clock, GlassWater, Grape, MapPin, Award, Trash2,
-  QrCode, Copy, Check, UtensilsCrossed, ExternalLink, Maximize2, X, PencilLine, Wine as WineIcon, Camera, Pencil, Star, MessageSquare
+  QrCode, Copy, Check, UtensilsCrossed, ExternalLink, Maximize2, X, PencilLine, Wine as WineIcon, Camera, Pencil, Star, MessageSquare, Gift
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { PageHeader } from '../components/layout/PageHeader';
@@ -459,6 +459,123 @@ function RatingSection({ wine, onUpdate }: { wine: Wine; onUpdate: (updated: Win
   );
 }
 
+function PersonalNoteSection({ wine, onUpdate }: { wine: Wine; onUpdate: (updated: Wine) => void }) {
+  const { updateWine } = useWineStore();
+  const { toast } = useToast();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue]     = useState(wine.personalComment ?? '');
+  const [saving, setSaving]   = useState(false);
+
+  useEffect(() => {
+    setValue(wine.personalComment ?? '');
+  }, [wine.id]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const updated = await updateWine(wine.id, { personalComment: value.trim() || null });
+      onUpdate(updated);
+    } catch {
+      toast('error', 'Erreur lors de la sauvegarde');
+    } finally {
+      setSaving(false);
+      setEditing(false);
+    }
+  };
+
+  const clear = async () => {
+    try {
+      const updated = await updateWine(wine.id, { personalComment: null });
+      onUpdate(updated);
+      setValue('');
+    } catch {
+      toast('error', 'Erreur lors de la suppression');
+    }
+    setEditing(false);
+  };
+
+  // Pas de note, pas d'édition → lien discret
+  if (!editing && !wine.personalComment) {
+    return (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text transition-colors px-1"
+      >
+        <Gift size={13} />
+        Ajouter une note (cadeau, occasion…)
+      </button>
+    );
+  }
+
+  // Note présente, pas d'édition → affichage
+  if (!editing) {
+    return (
+      <Card>
+        <div className="flex items-start gap-2">
+          <Gift size={15} className="text-champagne mt-0.5 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-text-secondary leading-relaxed whitespace-pre-wrap">
+              {wine.personalComment}
+            </p>
+            <div className="flex gap-3 mt-2">
+              <button
+                type="button"
+                onClick={() => { setValue(wine.personalComment ?? ''); setEditing(true); }}
+                className="text-[10px] text-accent-bright hover:underline"
+              >
+                Modifier
+              </button>
+              <button
+                type="button"
+                onClick={clear}
+                className="text-[10px] text-text-muted hover:underline"
+              >
+                Supprimer
+              </button>
+            </div>
+          </div>
+        </div>
+      </Card>
+    );
+  }
+
+  // Mode édition
+  return (
+    <Card>
+      <div className="flex items-center gap-2 mb-2">
+        <Gift size={14} className="text-champagne" />
+        <span className="text-xs font-semibold">Note (cadeau, occasion…)</span>
+      </div>
+      <textarea
+        className="w-full bg-surface-hover rounded-[var(--radius-sm)] border border-border text-sm text-text p-2 resize-none focus:outline-none focus:border-accent transition-colors"
+        rows={3}
+        autoFocus
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="Cadeau de Jean-Pierre · Noël 2025"
+      />
+      <div className="flex gap-2 mt-2">
+        <button
+          type="button"
+          onClick={save}
+          disabled={saving}
+          className="text-xs bg-accent/20 text-accent-bright px-3 py-1 rounded-[var(--radius-sm)] hover:bg-accent/30 transition-colors disabled:opacity-50"
+        >
+          {saving ? 'Sauvegarde…' : 'Sauvegarder'}
+        </button>
+        <button
+          type="button"
+          onClick={() => { setValue(wine.personalComment ?? ''); setEditing(false); }}
+          className="text-xs text-text-muted hover:text-text px-2 py-1 transition-colors"
+        >
+          Annuler
+        </button>
+      </div>
+    </Card>
+  );
+}
+
 export function WineDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -710,6 +827,9 @@ export function WineDetail() {
 
         {/* Ma note */}
         <RatingSection wine={wine} onUpdate={setWine} />
+
+        {/* Note personnelle (cadeau, occasion…) */}
+        <PersonalNoteSection wine={wine} onUpdate={setWine} />
 
         {/* Description */}
         {wine.description && (

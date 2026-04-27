@@ -326,18 +326,10 @@ export function PublicWineDetail() {
         {/* Rating perso */}
         {wine.personalRating != null && wine.personalRating > 0 && (
           <Card>
-            <div className="flex items-center gap-2 mb-2">
+            <div className="flex items-center gap-2">
               <Star size={16} className="text-gold" />
               <h3 className="text-sm font-semibold">Note personnelle</h3>
-            </div>
-            <div className="flex gap-1">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <Star
-                  key={star}
-                  size={22}
-                  className={star <= (wine.personalRating ?? 0) ? 'fill-gold text-gold' : 'fill-transparent text-border'}
-                />
-              ))}
+              <span className="ml-auto font-display text-2xl font-bold text-gold">{wine.personalRating}<span className="text-xs text-text-muted">/100</span></span>
             </div>
             {wine.tastingNotes && (
               <p className="text-xs text-text-secondary mt-2 leading-relaxed italic">{wine.tastingNotes}</p>

@@ -10,38 +10,21 @@ import { useWineStore } from '../stores/wine';
 import { apiFetch } from '../lib/api';
 import { useToast } from '../components/ui/Toast';
 
-type PdfTemplate = 'v1' | 'v2';
-
-const PDF_TEMPLATES: { value: PdfTemplate; label: string; description: string }[] = [
-  {
-    value: 'v1',
-    label: 'Compact',
-    description: 'Vue liste dense — ~8 vins/page, petites photos',
-  },
-  {
-    value: 'v2',
-    label: 'Illustré',
-    description: 'Grandes photos + 1 section par page',
-  },
-];
-
 export function Settings() {
   const { locations, fetchLocations } = useLocationStore();
-  const { wines, pendingCount, fetchWines, fetchPending } = useWineStore();
+  const wines = useWineStore((s) => s.wines);
+  const pendingCount = useWineStore((s) => s.pendingCount);
   const [pdfLoading, setPdfLoading] = useState(false);
-  const [pdfTemplate, setPdfTemplate] = useState<PdfTemplate>('v1');
   const { toast } = useToast();
 
   useEffect(() => {
     fetchLocations();
-    fetchWines();
-    fetchPending();
-  }, [fetchLocations, fetchWines, fetchPending]);
+  }, [fetchLocations]);
 
   const handleDownloadPdf = async () => {
     setPdfLoading(true);
     try {
-      const resp = await apiFetch(`/api/pdf/wine-list?template=${pdfTemplate}`);
+      const resp = await apiFetch('/api/pdf/wine-list');
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ error: 'Erreur inconnue' }));
         toast('error', err.error || 'Impossible de générer le PDF');
@@ -51,7 +34,7 @@ export function Settings() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = pdfTemplate === 'v2' ? 'carte-des-vins-illustree.pdf' : 'carte-des-vins.pdf';
+      a.download = 'carte-des-vins.pdf';
       a.click();
       URL.revokeObjectURL(url);
     } catch {
@@ -102,10 +85,6 @@ export function Settings() {
           <div className="space-y-1.5 text-sm text-text-secondary">
             <div className="flex justify-between">
               <span>Bouteilles en cave</span>
-              <span className="font-mono">{wines.reduce((sum, w) => sum + (w.quantity || 0), 0)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Références distinctes</span>
               <span className="font-mono">{wines.length}</span>
             </div>
             <div className="flex justify-between">
@@ -126,29 +105,8 @@ export function Settings() {
             <h3 className="text-sm font-semibold">Exporter</h3>
           </div>
           <p className="text-xs text-text-muted mb-3">
-            Génère la carte des vins en PDF — choisissez le format avant de télécharger.
+            Génère la carte des vins en PDF — mise en page luxe avec photo et description pour chaque bouteille.
           </p>
-
-          {/* Template selector */}
-          <div className="grid grid-cols-2 gap-2 mb-3">
-            {PDF_TEMPLATES.map((tpl) => (
-              <button
-                key={tpl.value}
-                onClick={() => setPdfTemplate(tpl.value)}
-                className={`text-left rounded-[var(--radius-md)] border p-3 transition-colors ${
-                  pdfTemplate === tpl.value
-                    ? 'border-accent bg-accent/10 text-text'
-                    : 'border-border bg-surface hover:bg-surface-hover text-text-secondary'
-                }`}
-              >
-                <p className={`text-xs font-semibold mb-0.5 ${pdfTemplate === tpl.value ? 'text-accent-bright' : ''}`}>
-                  {tpl.label}
-                </p>
-                <p className="text-[10px] text-text-muted leading-tight">{tpl.description}</p>
-              </button>
-            ))}
-          </div>
-
           <Button
             variant="secondary"
             size="sm"
@@ -157,7 +115,7 @@ export function Settings() {
           >
             {pdfLoading
               ? <><Loader2 size={14} className="animate-spin" /> Génération…</>
-              : <><FileDown size={14} /> Télécharger ({pdfTemplate === 'v2' ? 'Illustré' : 'Compact'})</>
+              : <><FileDown size={14} /> Télécharger la carte des vins</>
             }
           </Button>
         </Card>
