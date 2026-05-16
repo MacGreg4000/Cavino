@@ -1,9 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import puppeteer from 'puppeteer-core';
+import QRCode from 'qrcode';
 import fs from 'fs';
 import path from 'path';
 import { db } from '../db/index.js';
-import { wines } from '../db/schema.js';
+import { wines, locations } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 
 const CHROME = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser';
@@ -102,9 +103,48 @@ function esc(s?: string | null) {
 
 function trunc(s: string, n: number) { return s.length <= n ? s : s.slice(0, n - 1) + '…'; }
 
+/** Génère un QR code en Data URL PNG (base64). Retourne '' en cas d'erreur. */
+async function makeQR(url: string, size = 80): Promise<string> {
+  try {
+    return await QRCode.toDataURL(url, {
+      width: size,
+      margin: 1,
+      color: { dark: '#111827', light: '#FFFFFF' },
+    });
+  } catch { return ''; }
+}
+
+/** Construit le bloc HTML localisation + QR pour une carte vin. */
+function locationAndQR(
+  wine: Record<string, any>,
+  locMap: Map<string, string>,
+  qrDataUrl: string,
+): string {
+  const locationName = wine.locationId ? locMap.get(wine.locationId) ?? null : null;
+  const slotIds: string[] = wine.slotIds ?? [];
+  const hasLoc = locationName || slotIds.length > 0;
+  const qty: number = wine.quantity ?? 0;
+
+  const locHtml = hasLoc ? `
+    <div class="loc-block">
+      <div class="loc-icon">📍</div>
+      <div class="loc-text">
+        ${locationName ? `<div class="loc-name">${esc(locationName)}</div>` : ''}
+        ${slotIds.length > 0 ? `<div class="loc-slots">${slotIds.map(esc).join(' · ')}</div>` : ''}
+        ${qty > 0 ? `<div class="loc-qty">${qty} bouteille${qty > 1 ? 's' : ''}</div>` : ''}
+      </div>
+    </div>` : (qty > 0 ? `<div class="loc-qty-bare">${qty} bouteille${qty > 1 ? 's' : ''} · non placée${qty > 1 ? 's' : ''}</div>` : '');
+
+  const qrHtml = qrDataUrl
+    ? `<img src="${qrDataUrl}" class="qr-img" alt="QR" title="Fiche publique" />`
+    : '';
+
+  return `<div class="loc-qr-row">${locHtml}<div class="qr-cell">${qrHtml}</div></div>`;
+}
+
 // ─── HTML template ────────────────────────────────────────────────────────────
 
-function buildHTML(allWines: Record<string, any>[], photosPath: string, title: string): string {
+function buildHTML(allWines: Record<string, any>[], photosPath: string, title: string, locMap: Map<string, string>, qrMap: Map<string, string>): string {
   const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
   const year  = new Date().getFullYear();
 
@@ -170,6 +210,7 @@ function buildHTML(allWines: Record<string, any>[], photosPath: string, title: s
         ? `<span class="grapes">Cépage${grapes.includes(',') ? 's' : ''} : ${esc(grapes)}</span>${region ? `<span class="region"> | ${esc(region)}</span>` : ''}`
         : region ? `<span class="region">${esc(region)}</span>` : '';
 
+      const qrDataUrl = qrMap.get(w.id) ?? '';
       sections += `
       <div class="wine-card">
         <div class="wine-photo">${photoEl}</div>
@@ -183,6 +224,7 @@ function buildHTML(allWines: Record<string, any>[], photosPath: string, title: s
           ${desc ? `<div class="wine-desc">${desc}</div>` : ''}
           ${timeline}
           <div class="wine-badges">${badges}</div>
+          ${locationAndQR(w, locMap, qrDataUrl)}
         </div>
       </div>`;
     }
@@ -338,6 +380,30 @@ function buildHTML(allWines: Record<string, any>[], photosPath: string, title: s
     white-space: nowrap;
   }
 
+  /* Location + QR */
+  .loc-qr-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 5px;
+  }
+  .loc-block {
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+    flex: 1;
+    min-width: 0;
+  }
+  .loc-icon  { font-size: 9px; flex-shrink: 0; margin-top: 1px; }
+  .loc-text  { min-width: 0; }
+  .loc-name  { font-size: 9px; font-weight: 700; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .loc-slots { font-size: 8px; color: #8B1A1A; font-family: monospace; letter-spacing: 0.03em; }
+  .loc-qty   { font-size: 8px; color: #9CA3AF; margin-top: 1px; }
+  .loc-qty-bare { font-size: 8px; color: #9CA3AF; flex: 1; }
+  .qr-cell   { flex-shrink: 0; }
+  .qr-img    { display: block; width: 60px; height: 60px; border: 1px solid #E5E7EB; border-radius: 3px; }
+
   /* Footer */
   footer {
     margin-top: 18px;
@@ -377,6 +443,340 @@ ${sections}
 </html>`;
 }
 
+// ─── V2 HTML template (4 par page, grande photo + saut de page par section) ───
+
+const PAGE_SIZE = 4; // bouteilles par page
+
+function buildHTMLv2(allWines: Record<string, any>[], photosPath: string, title: string, locMap: Map<string, string>, qrMap: Map<string, string>): string {
+  const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+  const year  = new Date().getFullYear();
+
+  const TYPE_ORDER_V2 = ['rouge', 'blanc', 'rosé', 'rose', 'champagne', 'mousseux',
+                         'pétillant', 'moelleux', 'fortifié', 'spiritueux', 'autre'];
+  const TYPE_LABELS: Record<string, string> = {
+    rouge: 'Vins Rouges', blanc: 'Vins Blancs', rosé: 'Vins Rosés',
+    rose: 'Vins Rosés', champagne: 'Champagnes & Crémants',
+    mousseux: 'Vins Mousseux', pétillant: 'Pétillants Naturels',
+    moelleux: 'Vins Moelleux & Liquoreux', fortifié: 'Vins Fortifiés',
+    spiritueux: 'Spiritueux', autre: 'Autres',
+  };
+  const TYPE_ACCENT: Record<string, string> = {
+    rouge: '#8B1A1A', blanc: '#B58D3D', rosé: '#C2185B',
+    rose: '#C2185B', champagne: '#92400E', mousseux: '#92400E',
+    pétillant: '#065F46', moelleux: '#5B21B6', fortifié: '#3730A3',
+    spiritueux: '#374151', autre: '#374151',
+  };
+
+  const byType = new Map<string, typeof allWines>();
+  for (const w of allWines) {
+    const t = (w.type || 'autre').toLowerCase();
+    if (!byType.has(t)) byType.set(t, []);
+    byType.get(t)!.push(w);
+  }
+  const seen = new Set<string>();
+  const ordered = [...TYPE_ORDER_V2, ...byType.keys()].filter(t => {
+    if (seen.has(t) || !byType.has(t)) return false;
+    seen.add(t); return true;
+  });
+
+  // Helper : construit le HTML d'une fiche vin
+  const wineCard = (w: Record<string, any>, locMapInner = locMap, qrMapInner = qrMap) => {
+    const imgSrc  = photoBase64(w.photoUrl, photosPath);
+    const name    = esc(trunc(w.name || 'Sans nom', 60));
+    const vintage = w.vintage ? ` — ${w.vintage}` : (w.nonVintage ? ' — NV' : '');
+    const grapes  = ((w.grapes as string[] | null) || []).join(', ');
+    const region  = [w.region, w.country].filter(Boolean).join(', ');
+    const appel   = esc(w.appellation || '');
+    const desc    = esc(trunc(w.description || w.palate || '', 320));
+    const awards  = (w.awards as Array<{name: string}> | null) || [];
+
+    const qty = w.quantity ? `×${w.quantity}` : '';
+
+    const timeline = drinkTimeline(w);
+    let badges = `<span class="badge" style="${typeBadgeStyle(w.type)}">${esc(w.type || 'autre')}</span>`;
+    const ds = drinkStatus(w);
+    if (ds) badges += `<span class="badge" style="${ds.style}">${ds.label}</span>`;
+    if (awards.length) badges += `<span class="badge" style="background:#FEF3C7;color:#92400E">★ ${esc(awards[0].name)}</span>`;
+
+    const rating = w.personalRating as number | null;
+    const starsHtml = (rating && rating > 0)
+      ? `<div style="margin-top:4px;">${[1,2,3,4,5].map(s =>
+          `<span style="color:${s <= rating ? '#B58D3D' : '#D1D5DB'};font-size:13px;">★</span>`
+        ).join('')}</div>`
+      : '';
+
+    const photoEl = imgSrc
+      ? `<img src="${imgSrc}" alt="${name}" />`
+      : `<div class="photo-placeholder">🍷</div>`;
+
+    const grapeHtml = grapes
+      ? `<span class="grapes">Cépage${grapes.includes(',') ? 's' : ''} : ${esc(grapes)}</span>${region ? `<span class="region"> | ${esc(region)}</span>` : ''}`
+      : region ? `<span class="region">${esc(region)}</span>` : '';
+
+    const qrDataUrl = qrMapInner.get(w.id) ?? '';
+    return `
+    <div class="wine-card">
+      <div class="wine-photo">${photoEl}</div>
+      <div class="wine-info">
+        <div class="wine-header">
+          <div class="wine-name">${name}${vintage ? `<span class="vintage">${vintage}</span>` : ''}</div>
+          ${qty ? `<div class="wine-qty">${qty}</div>` : ''}
+        </div>
+        ${grapeHtml ? `<div class="wine-grapes-line">${grapeHtml}</div>` : ''}
+        ${appel ? `<div class="wine-appellation">${appel}</div>` : ''}
+        ${desc  ? `<div class="wine-desc">${desc}</div>` : ''}
+        ${timeline}
+        <div class="wine-badges">${badges}</div>
+        ${starsHtml}
+        ${locationAndQR(w, locMapInner, qrDataUrl)}
+      </div>
+    </div>`;
+  };
+
+  // Construction par groupes de PAGE_SIZE avec saut de page explicite
+  let pages = '';
+  let isVeryFirst = true;
+
+  for (const wineType of ordered) {
+    const list   = byType.get(wineType)!;
+    const label  = (TYPE_LABELS[wineType] || wineType).toUpperCase();
+    const accent = TYPE_ACCENT[wineType] || '#8B1A1A';
+
+    // Découper la section en pages de PAGE_SIZE
+    for (let i = 0; i < list.length; i += PAGE_SIZE) {
+      const batch      = list.slice(i, i + PAGE_SIZE);
+      const isFirst    = i === 0;
+      const pageBreak  = isVeryFirst ? '' : 'page-break-before:always;';
+      isVeryFirst      = false;
+
+      let pageHtml = `<div style="${pageBreak}">`;
+
+      // En-tête de section : seulement sur la 1re page de chaque section
+      if (isFirst) {
+        pageHtml += `
+        <div class="section-header" style="border-left:4px solid ${accent};">
+          <span class="section-title" style="color:${accent};">${esc(label)}</span>
+          <span class="section-count">${list.length} bouteille${list.length > 1 ? 's' : ''}</span>
+        </div>`;
+      }
+
+      for (const w of batch) pageHtml += wineCard(w);
+
+      pageHtml += `</div>`;
+      pages += pageHtml;
+    }
+  }
+
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Liberation Sans', 'Noto Sans', Arial, sans-serif;
+    background: white;
+    color: #111827;
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
+  @page {
+    size: A4;
+    margin: 12mm 15mm 14mm 15mm;
+  }
+
+  /* ── Header ── */
+  header { border-top: 3px solid #8B1A1A; padding-top: 14px; margin-bottom: 8px; }
+
+  .header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-bottom: 10px;
+  }
+
+  .cave-name {
+    font-size: 26px;
+    font-weight: 300;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #111827;
+  }
+
+  .header-meta { color: #9CA3AF; font-size: 10px; text-align: right; }
+  .header-rule { border: none; border-top: 1px solid #E5E7EB; margin-bottom: 5px; }
+  .header-sub  { color: #9CA3AF; font-size: 10px; letter-spacing: 0.05em; }
+
+  /* ── Section header ── */
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #F9FAFB;
+    border-top: 1px solid #E5E7EB;
+    border-bottom: 1px solid #E5E7EB;
+    padding: 8px 12px;
+    margin-bottom: 2px;
+  }
+
+  .section-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+  }
+
+  .section-count {
+    font-size: 9px;
+    color: #9CA3AF;
+    letter-spacing: 0.05em;
+  }
+
+  /* ── Wine card V2 — 4 par page, grande photo ── */
+  .wine-card {
+    display: flex;
+    gap: 20px;
+    padding: 14px 0;
+    border-bottom: 1px solid #F0F0F0;
+  }
+
+  /* Photo 120×182px */
+  .wine-photo { width: 120px; flex-shrink: 0; }
+  .wine-photo img {
+    width: 120px;
+    height: 182px;
+    object-fit: contain;
+    object-position: center;
+    background: #F9FAFB;
+    border: 1px solid #E5E7EB;
+    display: block;
+  }
+  .photo-placeholder {
+    width: 120px;
+    height: 182px;
+    background: #F9FAFB;
+    border: 1px solid #E5E7EB;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 38px;
+    color: #D1D5DB;
+  }
+
+  /* Info */
+  .wine-info { flex: 1; min-width: 0; }
+
+  .wine-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 5px;
+  }
+
+  .wine-name {
+    font-size: 14px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #111827;
+    flex: 1;
+    line-height: 1.3;
+  }
+
+  .vintage { font-weight: 400; color: #B58D3D; }
+
+  .wine-qty { font-size: 11px; color: #9CA3AF; font-weight: 600; letter-spacing: 0.05em; flex-shrink: 0; }
+
+  .wine-grapes-line { font-size: 12px; margin-bottom: 4px; }
+  .grapes  { font-weight: 600; color: #B58D3D; }
+  .region  { color: #9CA3AF; font-style: italic; }
+
+  .wine-appellation { font-size: 11px; color: #6B7280; margin-bottom: 4px; }
+
+  .wine-desc {
+    font-size: 11px;
+    color: #6B7280;
+    font-style: italic;
+    line-height: 1.55;
+    margin-bottom: 7px;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .wine-badges { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+  .badge {
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+
+  /* Location + QR (V2 — tailles légèrement plus grandes) */
+  .loc-qr-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 8px;
+  }
+  .loc-block {
+    display: flex;
+    align-items: flex-start;
+    gap: 5px;
+    flex: 1;
+    min-width: 0;
+  }
+  .loc-icon  { font-size: 11px; flex-shrink: 0; margin-top: 1px; }
+  .loc-text  { min-width: 0; }
+  .loc-name  { font-size: 11px; font-weight: 700; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .loc-slots { font-size: 10px; color: #8B1A1A; font-family: monospace; letter-spacing: 0.03em; }
+  .loc-qty   { font-size: 9px; color: #9CA3AF; margin-top: 2px; }
+  .loc-qty-bare { font-size: 9px; color: #9CA3AF; flex: 1; }
+  .qr-cell   { flex-shrink: 0; }
+  .qr-img    { display: block; width: 90px; height: 90px; border: 1px solid #E5E7EB; border-radius: 4px; }
+
+  /* Footer */
+  footer {
+    margin-top: 18px;
+    padding-top: 10px;
+    border-top: 1px solid #E5E7EB;
+    text-align: center;
+    color: #9CA3AF;
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  @media print {
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-top">
+    <div class="cave-name">${esc(title)}</div>
+    <div class="header-meta">${allWines.length} référence${allWines.length > 1 ? 's' : ''}  ·  ${today}</div>
+  </div>
+  <hr class="header-rule">
+  <div class="header-sub">Carte des Vins — Format Illustré</div>
+</header>
+
+${pages}
+
+<footer>${esc(title)} — ${year}</footer>
+
+</body>
+</html>`;
+}
+
 // ─── Route ────────────────────────────────────────────────────────────────────
 const TYPE_ORDER = ['rouge', 'blanc', 'rosé', 'rose', 'champagne', 'mousseux',
                     'pétillant', 'moelleux', 'fortifié', 'spiritueux', 'autre'];
@@ -385,6 +785,8 @@ export async function pdfRoutes(app: FastifyInstance) {
   app.get('/api/pdf/wine-list', async (req, reply) => {
     const photosPath = process.env.PHOTOS_PATH || '/photos';
     const caveTitle  = process.env.CAVE_TITLE  || 'Ma Cave';
+    const publicBase = process.env.PUBLIC_BASE_URL || `${(req.headers['x-forwarded-proto'] ?? 'http')}://${req.headers.host}`;
+    const { template } = (req.query as Record<string, string>);
 
     const allWines = await db.select().from(wines)
       .where(eq(wines.importStatus, 'available'))
@@ -393,7 +795,23 @@ export async function pdfRoutes(app: FastifyInstance) {
     if (!allWines.length)
       return reply.status(404).send({ error: 'Aucun vin disponible' });
 
-    const html = buildHTML(allWines as Record<string, any>[], photosPath, caveTitle);
+    // Charger les locations pour afficher les noms (id → name)
+    const allLocations = await db.select({ id: locations.id, name: locations.name }).from(locations);
+    const locMap = new Map(allLocations.map((l) => [l.id, l.name]));
+
+    // Pré-générer les QR codes en parallèle (1 par bouteille)
+    const qrSize = template === 'v2' ? 90 : 60;
+    const qrMap = new Map<string, string>();
+    await Promise.all(
+      allWines.map(async (w) => {
+        const url = `${publicBase}/public/wine/${w.id}`;
+        qrMap.set(w.id, await makeQR(url, qrSize));
+      })
+    );
+
+    const html = template === 'v2'
+      ? buildHTMLv2(allWines as Record<string, any>[], photosPath, caveTitle, locMap, qrMap)
+      : buildHTML(allWines as Record<string, any>[], photosPath, caveTitle, locMap, qrMap);
 
     const browser = await puppeteer.launch({
       executablePath: CHROME,
@@ -417,8 +835,9 @@ export async function pdfRoutes(app: FastifyInstance) {
         margin: { top: '12mm', right: '15mm', bottom: '14mm', left: '15mm' },
       });
 
+      const filename = template === 'v2' ? 'carte-des-vins-illustree.pdf' : 'carte-des-vins.pdf';
       reply.raw.setHeader('Content-Type', 'application/pdf');
-      reply.raw.setHeader('Content-Disposition', 'inline; filename="carte-des-vins.pdf"');
+      reply.raw.setHeader('Content-Disposition', `inline; filename="${filename}"`);
       reply.raw.end(pdf);
     } finally {
       await browser.close();
