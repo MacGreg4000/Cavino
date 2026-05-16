@@ -124,7 +124,12 @@ export function SlotPicker({
 
   const handleLocationChange = (newLoc: string) => {
     if (useMoveFlow && movePhase === 'source') return;
-    onSelect([], newLoc);
+    // Conserver les slots sélectionnés qui appartiennent à d'AUTRES étagères.
+    // Sans ça, changer d'étagère vidait toute la sélection et les bouteilles
+    // déjà placées dans le rack précédent étaient effacées à l'enregistrement.
+    const currentGridSlotIds = new Set(gridData?.slots.map((s) => s.slot.id) ?? []);
+    const keptSlots = selectedSlots.filter((id) => !currentGridSlotIds.has(id));
+    onSelect(keptSlots, newLoc);
   };
 
   const highlightPrimary =
