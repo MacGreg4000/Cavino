@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Wine, Clock, TrendingUp, AlertCircle, Settings, History, GlassWater, Plus, CheckCircle, LogOut } from 'lucide-react';
+import { Wine, Clock, TrendingUp, AlertCircle, Settings, History, GlassWater, Plus, CheckCircle, LogOut, Globe } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { WinePhoto } from '../components/ui/WinePhoto';
@@ -81,6 +81,13 @@ export function Home() {
           <p className="text-text-muted text-sm mt-1">Votre cave personnelle</p>
         </div>
         <div className="flex items-center gap-1 mt-1">
+          <Link
+            to="/public"
+            className="p-2 text-text-muted hover:text-text transition-colors"
+            title="Page publique de la cave"
+          >
+            <Globe size={20} />
+          </Link>
           <Link to="/settings" className="p-2 text-text-muted hover:text-text transition-colors">
             <Settings size={20} />
           </Link>
