@@ -445,7 +445,7 @@ ${sections}
 
 // ─── V2 HTML template (4 par page, grande photo + saut de page par section) ───
 
-const PAGE_SIZE = 4; // bouteilles par page
+const PAGE_SIZE = 3; // bouteilles par page
 
 function buildHTMLv2(allWines: Record<string, any>[], photosPath: string, title: string, locMap: Map<string, string>, qrMap: Map<string, string>): string {
   const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
