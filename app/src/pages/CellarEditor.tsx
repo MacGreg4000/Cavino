@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Save, RotateCcw, Lock, Unlock } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
@@ -17,11 +17,19 @@ function generateLabels(count: number, type: 'alpha' | 'numeric'): string[] {
   return Array.from({ length: count }, (_, i) => String(i + 1));
 }
 
+/** Déduit le type de label (alpha/numeric) depuis le premier label stocké. */
+function inferLabelType(labels: string[] | undefined): 'alpha' | 'numeric' {
+  if (!labels || labels.length === 0) return 'alpha';
+  return /^\d+$/.test(labels[0]) ? 'numeric' : 'alpha';
+}
+
 export function CellarEditor() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
   const createLocation = useLocationStore((s) => s.createLocation);
+  const updateLocation = useLocationStore((s) => s.updateLocation);
+  const fetchLocation  = useLocationStore((s) => s.fetchLocation);
 
   const isNew = !id || id === 'new';
 
@@ -34,6 +42,27 @@ export function CellarEditor() {
   const [colLabelType, setColLabelType] = useState<'alpha' | 'numeric'>('numeric');
   const [blockedSlots, setBlockedSlots] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+
+  // Charge les données existantes si on est en mode édition
+  useEffect(() => {
+    if (isNew || !id) return;
+    fetchLocation(id)
+      .then((loc) => {
+        setName(loc.name);
+        setType(loc.type);
+        setColor(loc.color ?? '#8B1A1A');
+        const cfg = loc.gridConfig;
+        if (cfg) {
+          setRows(cfg.rows);
+          setCols(cfg.cols);
+          setRowLabelType(inferLabelType(cfg.labelRows));
+          setColLabelType(inferLabelType(cfg.labelCols));
+          setBlockedSlots(new Set(cfg.blockedSlots ?? []));
+        }
+      })
+      .catch(() => setLoadError(true));
+  }, [id, isNew, fetchLocation]);
 
   const labelRows = generateLabels(rows, rowLabelType);
   const labelCols = generateLabels(cols, colLabelType);
@@ -56,32 +85,44 @@ export function CellarEditor() {
     }
     setSaving(true);
     try {
-      await createLocation({
-        name: name.trim(),
-        type,
-        color,
-        gridConfig: {
-          rows,
-          cols,
-          labelRows,
-          labelCols,
-          blockedSlots: Array.from(blockedSlots),
-        },
-      });
-      toast('success', `${name} créé avec ${rows * cols - blockedSlots.size} slots`);
+      const gridConfig = {
+        rows,
+        cols,
+        labelRows,
+        labelCols,
+        blockedSlots: Array.from(blockedSlots),
+      };
+      if (isNew) {
+        await createLocation({ name: name.trim(), type, color, gridConfig });
+        toast('success', `${name} créé avec ${rows * cols - blockedSlots.size} slots`);
+      } else {
+        await updateLocation(id!, { name: name.trim(), type, color, gridConfig });
+        toast('success', `${name} mis à jour`);
+      }
       navigate('/cellar');
     } catch {
-      toast('error', 'Erreur lors de la création');
+      toast('error', isNew ? 'Erreur lors de la création' : 'Erreur lors de la mise à jour');
     }
     setSaving(false);
   };
 
   const totalActive = rows * cols - blockedSlots.size;
 
+  if (loadError) {
+    return (
+      <div>
+        <PageHeader title="Emplacement introuvable" back />
+        <div className="px-4 pt-8 text-center text-text-muted text-sm">
+          Impossible de charger cet emplacement.
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <PageHeader
-        title={isNew ? 'Nouvel emplacement' : 'Modifier'}
+        title={isNew ? 'Nouvel emplacement' : `Modifier — ${name || '…'}`}
         back
         action={
           <Button variant="primary" size="sm" loading={saving} onClick={handleSave}>

@@ -44,8 +44,10 @@ interface LocationState {
   loading: boolean;
 
   fetchLocations: () => Promise<void>;
+  fetchLocation: (id: string) => Promise<Location>;
   fetchGrid: (id: string) => Promise<{ location: Location; slots: GridSlot[] }>;
   createLocation: (data: { name: string; type: string; color?: string; gridConfig: GridConfig }) => Promise<Location>;
+  updateLocation: (id: string, data: { name?: string; type?: string; color?: string; gridConfig?: GridConfig }) => Promise<Location>;
 }
 
 const API = '/api';
@@ -67,6 +69,12 @@ export const useLocationStore = create<LocationState>((set) => ({
     }
   },
 
+  fetchLocation: async (id) => {
+    const res = await apiFetch(`${API}/locations/${id}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  },
+
   fetchGrid: async (id) => {
     const res = await apiFetch(`${API}/locations/${id}/grid`);
     return res.json();
@@ -79,6 +87,19 @@ export const useLocationStore = create<LocationState>((set) => ({
     });
     const location = await res.json();
     set((s) => ({ locations: [...s.locations, location] }));
+    return location;
+  },
+
+  updateLocation: async (id, data) => {
+    const res = await apiFetch(`${API}/locations/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const location = await res.json();
+    set((s) => ({
+      locations: s.locations.map((l) => l.id === id ? location : l),
+    }));
     return location;
   },
 }));

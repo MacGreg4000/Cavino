@@ -61,6 +61,14 @@ export async function locationRoutes(app: FastifyInstance) {
     return location;
   });
 
+  // GET /api/locations/:id
+  app.get('/api/locations/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const [location] = await db.select().from(locations).where(eq(locations.id, id));
+    if (!location) return reply.status(404).send({ error: 'Location not found' });
+    return location;
+  });
+
   // PATCH /api/locations/:id
   app.patch('/api/locations/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
