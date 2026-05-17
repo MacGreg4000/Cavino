@@ -10,21 +10,23 @@ import { useWineStore } from '../stores/wine';
 import { apiFetch } from '../lib/api';
 import { useToast } from '../components/ui/Toast';
 
+
 export function Settings() {
   const { locations, fetchLocations } = useLocationStore();
-  const wines = useWineStore((s) => s.wines);
-  const pendingCount = useWineStore((s) => s.pendingCount);
+  const { wines, pendingCount, fetchWines, fetchPending } = useWineStore();
   const [pdfLoading, setPdfLoading] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
     fetchLocations();
-  }, [fetchLocations]);
+    fetchWines();
+    fetchPending();
+  }, [fetchLocations, fetchWines, fetchPending]);
 
   const handleDownloadPdf = async () => {
     setPdfLoading(true);
     try {
-      const resp = await apiFetch('/api/pdf/wine-list');
+      const resp = await apiFetch('/api/pdf/wine-list?template=v2');
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ error: 'Erreur inconnue' }));
         toast('error', err.error || 'Impossible de générer le PDF');
@@ -85,6 +87,10 @@ export function Settings() {
           <div className="space-y-1.5 text-sm text-text-secondary">
             <div className="flex justify-between">
               <span>Bouteilles en cave</span>
+              <span className="font-mono">{wines.reduce((sum, w) => sum + (w.quantity || 0), 0)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Références distinctes</span>
               <span className="font-mono">{wines.length}</span>
             </div>
             <div className="flex justify-between">
@@ -105,8 +111,9 @@ export function Settings() {
             <h3 className="text-sm font-semibold">Exporter</h3>
           </div>
           <p className="text-xs text-text-muted mb-3">
-            Génère la carte des vins en PDF — mise en page luxe avec photo et description pour chaque bouteille.
+            Génère la carte des vins en PDF — choisissez le format avant de télécharger.
           </p>
+
           <Button
             variant="secondary"
             size="sm"
