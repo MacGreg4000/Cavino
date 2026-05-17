@@ -348,7 +348,6 @@ function buildHTMLv2(
   const year  = new Date().getFullYear();
 
   const totalBottles = allWines.reduce((s, w) => s + (w.quantity ?? 1), 0);
-  const totalValue   = allWines.reduce((s, w) => s + ((parseFloat(w.estimatedValue || '0') || 0) * (w.quantity ?? 1)), 0);
 
   const TYPE_ORDER_V2 = ['rouge', 'blanc', 'rose', 'champagne', 'mousseux', 'petillant', 'moelleux', 'fortifie', 'spiritueux', 'autre'];
   const TYPE_LABELS: Record<string, string> = {
@@ -523,8 +522,7 @@ function buildHTMLv2(
         <div class="cover-stat"><span class="stat-value">${totalBottles}</span><span class="stat-label">bouteille${totalBottles > 1 ? 's' : ''}</span></div>
         <div class="cover-sep">·</div>
         <div class="cover-stat"><span class="stat-value">${allWines.length}</span><span class="stat-label">reference${allWines.length > 1 ? 's' : ''}</span></div>
-        ${totalValue > 0 ? `<div class="cover-sep">·</div><div class="cover-stat"><span class="stat-value">${totalValue.toFixed(0)} &#x20AC;</span><span class="stat-label">valeur estimee</span></div>` : ''}
-      </div>
+        </div>
       <div class="cover-date">${today}</div>
     </div>
     <div class="cover-bottom-rule"></div>
