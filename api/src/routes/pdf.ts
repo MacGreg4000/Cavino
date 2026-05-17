@@ -188,11 +188,6 @@ function buildHTML(allWines: Record<string, any>[], photosPath: string, title: s
       const desc    = esc(trunc(w.description || w.palate || '', 200));
       const awards  = (w.awards as Array<{name:string}> | null) || [];
 
-      const price   = w.purchasePrice
-        ? `${parseFloat(w.purchasePrice).toFixed(2).replace('.', ',')} €`
-        : w.estimatedValue
-        ? `≈ ${parseFloat(w.estimatedValue).toFixed(2).replace('.', ',')} €`
-        : '';
       const qty     = w.quantity ? `Qté : ${w.quantity}` : '';
 
       // Timeline + Badges
@@ -217,7 +212,7 @@ function buildHTML(allWines: Record<string, any>[], photosPath: string, title: s
         <div class="wine-info">
           <div class="wine-header">
             <div class="wine-name">${name}${vintage ? `<span class="vintage">${vintage}</span>` : ''}</div>
-            ${price || qty ? `<div class="wine-right">${price ? `<div class="wine-price">${price}</div>` : ''}${qty ? `<div class="wine-qty">${qty}</div>` : ''}</div>` : ''}
+            ${qty ? `<div class="wine-right"><div class="wine-qty">${qty}</div></div>` : ''}
           </div>
           ${grapeHtml ? `<div class="wine-grapes-line">${grapeHtml}</div>` : ''}
           ${appel ? `<div class="wine-appellation">${appel}</div>` : ''}
