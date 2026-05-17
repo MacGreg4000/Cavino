@@ -33,6 +33,8 @@ services:
       PORT: 3010
       JWT_SECRET: ${JWT_SECRET:-caveau_jwt_secret_change_me}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme}
+      # URL publique de l'app (pour les QR codes du PDF) — ex: http://macciolupo.tplinkdns.com
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
       # Inbox (NAS / Docker volume) : polling + scan périodique si le watcher rate des fichiers
       CHOKIDAR_USEPOLLING: ${CHOKIDAR_USEPOLLING:-true}
       CHOKIDAR_INTERVAL_MS: ${CHOKIDAR_INTERVAL_MS:-5000}
