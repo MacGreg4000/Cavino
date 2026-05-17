@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from ‘react’;
-import { CellarGrid } from ‘./CellarGrid’;
-import { useLocationStore, type Location, type GridSlot } from ‘../../stores/location’;
-import { Select } from ‘../ui/Select’;
-import { Button } from ‘../ui/Button’;
-import { ArrowRight } from ‘lucide-react’;
+import { useEffect, useMemo, useState } from 'react';
+import { CellarGrid } from './CellarGrid';
+import { useLocationStore, type Location, type GridSlot } from '../../stores/location';
+import { Select } from '../ui/Select';
+import { Button } from '../ui/Button';
+import { ArrowRight } from 'lucide-react';
 
 interface SlotPickerProps {
   selectedSlots: string[];
@@ -13,8 +13,8 @@ interface SlotPickerProps {
   wineIdBeingMoved?: string;
   /** Cases actuelles du vin — active le flux départ → arrivée (cadre or puis rouge) */
   sourceSlotIds?: string[];
-  /** Pour désactiver « Enregistrer » tant que l’étape départ n’est pas terminée */
-  onFlowPhaseChange?: (phase: ‘source’ | ‘dest’ | null) => void;
+  /** Pour désactiver « Enregistrer » tant que l'étape départ n'est pas terminée */
+  onFlowPhaseChange?: (phase: 'source' | 'dest' | null) => void;
 }
 
 export function SlotPicker({
@@ -36,11 +36,11 @@ export function SlotPicker({
 
   const useMoveFlow = Boolean(wineIdBeingMoved && sourceSlotIds.length > 0);
   const sourceSlotsKey = useMemo(
-    () => [...sourceSlotIds].sort().join(‘|’),
+    () => [...sourceSlotIds].sort().join('|'),
     [sourceSlotIds]
   );
-  const [movePhase, setMovePhase] = useState<’source’ | ‘dest’>(() =>
-    useMoveFlow ? ‘source’ : ‘dest’
+  const [movePhase, setMovePhase] = useState<'source' | 'dest'>(() =>
+    useMoveFlow ? 'source' : 'dest'
   );
   const [sourceConfirmedSlotId, setSourceConfirmedSlotId] = useState<string | null>(null);
 
@@ -50,24 +50,24 @@ export function SlotPicker({
 
   useEffect(() => {
     if (useMoveFlow) {
-      setMovePhase(‘source’);
+      setMovePhase('source');
       setSourceConfirmedSlotId(null);
     } else {
-      setMovePhase(‘dest’);
+      setMovePhase('dest');
       setSourceConfirmedSlotId(null);
     }
   }, [useMoveFlow, wineIdBeingMoved, sourceSlotsKey]);
 
   useEffect(() => {
     if (!onFlowPhaseChange) return;
-    if (!useMoveFlow) onFlowPhaseChange(‘dest’);
+    if (!useMoveFlow) onFlowPhaseChange('dest');
     else onFlowPhaseChange(movePhase);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [useMoveFlow, movePhase]);
 
   // ── Move flow : grille unique basée sur effectiveLocationId ──────────────────
   const effectiveLocationId = useMemo(() => {
-    if (!locations.length) return ‘’;
+    if (!locations.length) return '';
     if (selectedLocationId && locations.some((l) => l.id === selectedLocationId)) {
       return selectedLocationId;
     }
@@ -91,13 +91,13 @@ export function SlotPicker({
   // ── Move flow helpers ─────────────────────────────────────────────────────────
   const goToDestPhase = () => {
     onSelect([], effectiveLocationId);
-    setMovePhase(‘dest’);
+    setMovePhase('dest');
     setSourceConfirmedSlotId(null);
   };
 
   const handleMoveFlowSlotClick = (slot: GridSlot) => {
     if (slot.slot.isBlocked) return;
-    if (movePhase === ‘source’) {
+    if (movePhase === 'source') {
       const isOurBottle =
         wineIdBeingMoved &&
         slot.wine?.id === wineIdBeingMoved &&
@@ -117,11 +117,11 @@ export function SlotPicker({
   };
 
   const handleLocationChange = (newLoc: string) => {
-    if (movePhase === ‘source’) return;
+    if (movePhase === 'source') return;
     onSelect(selectedSlots, newLoc);
   };
 
-  // ── Mode normal : clic dans n’importe quelle grille ──────────────────────────
+  // ── Mode normal : clic dans n'importe quelle grille ──────────────────────────
   const handleNormalSlotClick = (slot: GridSlot, locationId: string) => {
     if (slot.slot.isBlocked || slot.wine) return;
     const slotId = slot.slot.id;
@@ -143,33 +143,33 @@ export function SlotPicker({
 
   // ── Mode move flow : dropdown + grille unique ─────────────────────────────────
   if (useMoveFlow) {
-    const highlightPrimary = movePhase === ‘source’
+    const highlightPrimary = movePhase === 'source'
       ? (sourceConfirmedSlotId ? [sourceConfirmedSlotId] : [])
       : selectedSlots;
-    const highlightSecondary = movePhase === ‘source’
+    const highlightSecondary = movePhase === 'source'
       ? sourceSlotIds.filter((id) => id !== sourceConfirmedSlotId)
       : [];
 
     return (
       <div className="space-y-3">
         <div className="flex items-center gap-2 text-xs text-text-secondary">
-          <span className={`font-mono px-2 py-0.5 rounded ${movePhase === ‘source’ ? ‘bg-wine-red/25 text-wine-red border border-wine-red/40’ : ‘bg-surface-hover border border-border’}`}>
+          <span className={`font-mono px-2 py-0.5 rounded ${movePhase === 'source' ? 'bg-wine-red/25 text-wine-red border border-wine-red/40' : 'bg-surface-hover border border-border'}`}>
             1 · Départ
           </span>
           <ArrowRight size={14} className="text-text-muted flex-shrink-0" />
-          <span className={`font-mono px-2 py-0.5 rounded ${movePhase === ‘dest’ ? ‘bg-wine-red/25 text-wine-red border border-wine-red/40’ : ‘bg-surface-hover border border-border’}`}>
+          <span className={`font-mono px-2 py-0.5 rounded ${movePhase === 'dest' ? 'bg-wine-red/25 text-wine-red border border-wine-red/40' : 'bg-surface-hover border border-border'}`}>
             2 · Arrivée
           </span>
         </div>
-        {movePhase === ‘source’ && (
+        {movePhase === 'source' && (
           <p className="text-xs text-text-secondary leading-relaxed">
             Touchez <strong className="text-text">la case où se trouve encore cette bouteille</strong> (cadre rouge).
             Puis appuyez sur <strong className="text-text">Continuer</strong>.
           </p>
         )}
-        {movePhase === ‘dest’ && (
+        {movePhase === 'dest' && (
           <p className="text-xs text-text-secondary leading-relaxed">
-            Touchez les <strong className="text-text">cases vides</strong> de destination —{‘ ‘}
+            Touchez les <strong className="text-text">cases vides</strong> de destination —{' '}
             <strong className="text-wine-red">cadre rouge</strong> = sélectionnée.
           </p>
         )}
@@ -178,7 +178,7 @@ export function SlotPicker({
           value={effectiveLocationId}
           onChange={(e) => handleLocationChange(e.target.value)}
           options={locations.map((l) => ({ value: l.id, label: `${l.name} (${l.type})` }))}
-          disabled={movePhase === ‘source’}
+          disabled={movePhase === 'source'}
         />
         {gridData && (
           <CellarGrid
@@ -191,7 +191,7 @@ export function SlotPicker({
             compact
           />
         )}
-        {movePhase === ‘source’ && (
+        {movePhase === 'source' && (
           <Button type="button" variant="primary" className="w-full" disabled={!sourceConfirmedSlotId} onClick={goToDestPhase}>
             Continuer : choisir la nouvelle place
           </Button>
@@ -207,10 +207,10 @@ export function SlotPicker({
   return (
     <div className="space-y-4">
       <p className="text-xs text-text-secondary leading-relaxed">
-        Touchez une case vide pour la sélectionner{‘ ‘}
+        Touchez une case vide pour la sélectionner{' '}
         <strong className="text-wine-red">(cadre rouge)</strong>.
         {remaining !== null && (
-          <span className="text-text-muted"> — {remaining} restante{remaining !== 1 ? ‘s’ : ‘’}</span>
+          <span className="text-text-muted"> — {remaining} restante{remaining !== 1 ? 's' : ''}</span>
         )}
       </p>
 
@@ -221,7 +221,7 @@ export function SlotPicker({
             <p className="text-xs font-semibold text-text-secondary mb-1.5 flex items-center gap-1.5">
               <span
                 className="inline-block w-2 h-2 rounded-full flex-shrink-0"
-                style={{ background: loc.color ?? ‘#8B1A1A’ }}
+                style={{ background: loc.color ?? '#8B1A1A' }}
               />
               {loc.name}
             </p>
