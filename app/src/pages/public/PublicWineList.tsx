@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Wine, Search, Clock } from 'lucide-react';
 import { Badge } from '../../components/ui/Badge';
+import { WinePhoto } from '../../components/ui/WinePhoto';
 import type { Wine as WineType } from '../../stores/wine';
 import { normalizeForSearch, matchesNormalizedSearch } from '../../lib/search-normalize';
 
@@ -107,10 +108,10 @@ export function PublicWineList() {
               <div className={`flex items-center gap-3 bg-surface rounded-[var(--radius-md)] p-3 border-l-4 ${typeColor(wine.type)} hover:bg-surface-hover transition-colors active:scale-[0.99]`}>
                 {/* Photo */}
                 {wine.photoUrl ? (
-                  <img
+                  <WinePhoto
                     src={wine.photoUrl}
                     alt={wine.name}
-                    className="w-16 h-16 rounded-[var(--radius-sm)] object-cover flex-shrink-0"
+                    className="w-16 h-16 rounded-[var(--radius-sm)] flex-shrink-0"
                   />
                 ) : (
                   <div className="w-16 h-16 rounded-[var(--radius-sm)] bg-surface-hover flex items-center justify-center flex-shrink-0">
