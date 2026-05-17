@@ -175,67 +175,103 @@ function Pairings({ wine }: { wine: Wine }) {
   );
 }
 
+interface GridEntry {
+  locationName: string;
+  rows: number;
+  cols: number;
+  slots: GridSlot[];
+  wineSlotIds: Set<string>;
+}
+
 function ShelfMinimap({ wine }: { wine: Wine }) {
   const { locations, fetchLocations } = useLocationStore();
   const fetchGrid = useLocationStore((s) => s.fetchGrid);
-  const [gridData, setGridData] = useState<{ rows: number; cols: number; slots: GridSlot[] } | null>(null);
+  const [grids, setGrids] = useState<GridEntry[]>([]);
 
   useEffect(() => {
-    if (!wine.locationId) return;
     fetchLocations();
-    fetchGrid(wine.locationId).then((data) => {
-      const config = data.location.gridConfig;
-      if (config) {
-        setGridData({ rows: config.rows, cols: config.cols, slots: data.slots });
-      }
-    }).catch(() => {});
-  }, [wine.locationId, fetchGrid, fetchLocations]);
+  }, [fetchLocations]);
 
-  if (!wine.locationId || !wine.slotIds?.length || !gridData) return null;
+  useEffect(() => {
+    if (!locations.length || !wine.slotIds?.length) return;
 
-  const location = locations.find((l) => l.id === wine.locationId);
-  const wineSlotIds = new Set(wine.slotIds);
+    // Associer chaque slotId à un emplacement via son préfixe (2 premiers caractères du nom)
+    const matchingLocations = locations.filter((loc) => {
+      const prefix = loc.name.substring(0, 2).toUpperCase();
+      return wine.slotIds!.some((id) => id.startsWith(prefix + '-'));
+    });
+
+    if (!matchingLocations.length) return;
+
+    Promise.all(
+      matchingLocations.map(async (loc) => {
+        const prefix = loc.name.substring(0, 2).toUpperCase();
+        const locSlots = new Set(wine.slotIds!.filter((id) => id.startsWith(prefix + '-')));
+        try {
+          const data = await fetchGrid(loc.id);
+          const config = data.location.gridConfig;
+          if (!config || locSlots.size === 0) return null;
+          return { locationName: loc.name, rows: config.rows, cols: config.cols, slots: data.slots, wineSlotIds: locSlots } satisfies GridEntry;
+        } catch { return null; }
+      })
+    ).then((results) => setGrids(results.filter(Boolean) as GridEntry[]));
+  }, [locations, wine.slotIds, fetchGrid]);
+
+  if (!wine.slotIds?.length || grids.length === 0) return null;
 
   return (
     <Card>
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-4">
         <MapPin size={16} className="text-accent-bright" />
         <h3 className="text-sm font-semibold">Emplacement</h3>
-        {location && <span className="text-xs text-text-muted ml-auto">{location.name}</span>}
+        <span className="text-xs text-text-muted ml-auto">
+          {grids.length > 1 ? `${grids.length} emplacements` : grids[0].locationName}
+        </span>
       </div>
-      <div
-        className="grid gap-[3px] mx-auto w-fit"
-        style={{
-          gridTemplateColumns: `repeat(${gridData.cols}, 10px)`,
-          gridTemplateRows: `repeat(${gridData.rows}, 10px)`,
-        }}
-      >
-        {Array.from({ length: gridData.rows }).map((_, row) =>
-          Array.from({ length: gridData.cols }).map((_, col) => {
-            const slot = gridData.slots.find((s) => s.slot.rowIndex === row && s.slot.colIndex === col);
-            const isBlocked = slot?.slot.isBlocked;
-            const isWineSlot = slot && wineSlotIds.has(slot.slot.id);
-            const isOccupied = slot?.slot.wineId && !isWineSlot;
 
-            return (
-              <div
-                key={`${row}-${col}`}
-                className={`w-[10px] h-[10px] rounded-full transition-colors ${
-                  isBlocked
-                    ? 'bg-transparent'
-                    : isWineSlot
-                    ? 'bg-accent-bright shadow-[0_0_4px_rgba(212,74,58,0.6)]'
-                    : isOccupied
-                    ? 'bg-text-muted/40'
-                    : 'bg-surface-hover border border-border-subtle'
-                }`}
-                title={slot?.slot.id || ''}
-              />
-            );
-          })
-        )}
+      <div className="space-y-5">
+        {grids.map((grid, i) => (
+          <div key={grid.locationName}>
+            {grids.length > 1 && (
+              <p className="text-xs font-semibold text-text-secondary mb-2">{grid.locationName}</p>
+            )}
+            <div
+              className="grid gap-[3px] mx-auto w-fit"
+              style={{
+                gridTemplateColumns: `repeat(${grid.cols}, 10px)`,
+                gridTemplateRows: `repeat(${grid.rows}, 10px)`,
+              }}
+            >
+              {Array.from({ length: grid.rows }).map((_, row) =>
+                Array.from({ length: grid.cols }).map((_, col) => {
+                  const slot = grid.slots.find((s) => s.slot.rowIndex === row && s.slot.colIndex === col);
+                  const isBlocked = slot?.slot.isBlocked;
+                  const isWineSlot = slot && grid.wineSlotIds.has(slot.slot.id);
+                  const isOccupied = slot?.slot.wineId && !isWineSlot;
+                  return (
+                    <div
+                      key={`${row}-${col}`}
+                      className={`w-[10px] h-[10px] rounded-full transition-colors ${
+                        isBlocked ? 'bg-transparent'
+                        : isWineSlot ? 'bg-accent-bright shadow-[0_0_4px_rgba(212,74,58,0.6)]'
+                        : isOccupied ? 'bg-text-muted/40'
+                        : 'bg-surface-hover border border-border-subtle'
+                      }`}
+                      title={slot?.slot.id || ''}
+                    />
+                  );
+                })
+              )}
+            </div>
+            <p className="text-center text-xs font-mono text-text-secondary mt-2">
+              {[...grid.wineSlotIds].sort().join(' · ')}
+            </p>
+            {i < grids.length - 1 && <div className="border-t border-border-subtle mt-4" />}
+          </div>
+        ))}
       </div>
-      <div className="flex items-center justify-center gap-4 mt-3 text-[10px] text-text-muted">
+
+      <div className="flex items-center justify-center gap-4 mt-4 text-[10px] text-text-muted">
         <div className="flex items-center gap-1">
           <div className="w-2 h-2 rounded-full bg-accent-bright" />
           <span>Cette bouteille</span>
@@ -249,11 +285,6 @@ function ShelfMinimap({ wine }: { wine: Wine }) {
           <span>Libre</span>
         </div>
       </div>
-      {wine.slotIds && (
-        <p className="text-center text-xs text-text-secondary mt-2 font-mono">
-          {wine.slotIds.join(', ')}
-        </p>
-      )}
     </Card>
   );
 }

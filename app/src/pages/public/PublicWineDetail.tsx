@@ -238,10 +238,14 @@ export function PublicWineDetail() {
               </Badge>
             )}
             {wine.classification && <Badge variant="gold">{wine.classification}</Badge>}
-            {wine.slotIds?.[0] && (
-              <div className="flex items-center gap-1 bg-surface border border-border rounded-[var(--radius-sm)] px-2 py-0.5">
-                <MapPin size={10} className="text-text-muted" />
-                <span className="font-mono text-[12px] text-text-secondary">{wine.slotIds[0]}</span>
+            {!!wine.slotIds?.length && (
+              <div className="flex items-center gap-1 flex-wrap">
+                {wine.slotIds.map((slotId) => (
+                  <div key={slotId} className="flex items-center gap-1 bg-surface border border-border rounded-[var(--radius-sm)] px-2 py-0.5">
+                    <MapPin size={10} className="text-text-muted" />
+                    <span className="font-mono text-[12px] text-text-secondary">{slotId}</span>
+                  </div>
+                ))}
               </div>
             )}
             <span className="font-mono text-sm text-text-muted">×{wine.quantity ?? 0}</span>
@@ -326,10 +330,18 @@ export function PublicWineDetail() {
         {/* Rating perso */}
         {wine.personalRating != null && wine.personalRating > 0 && (
           <Card>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 mb-2">
               <Star size={16} className="text-gold" />
               <h3 className="text-sm font-semibold">Note personnelle</h3>
-              <span className="ml-auto font-display text-2xl font-bold text-gold">{wine.personalRating}<span className="text-xs text-text-muted">/100</span></span>
+            </div>
+            <div className="flex gap-1">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <Star
+                  key={star}
+                  size={22}
+                  className={star <= (wine.personalRating ?? 0) ? 'fill-gold text-gold' : 'fill-transparent text-border'}
+                />
+              ))}
             </div>
             {wine.tastingNotes && (
               <p className="text-xs text-text-secondary mt-2 leading-relaxed italic">{wine.tastingNotes}</p>
