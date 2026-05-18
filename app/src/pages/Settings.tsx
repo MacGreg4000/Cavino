@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { MapPin, Plus, Wine, FileDown, Loader2, QrCode, Copy, Check, Printer, ExternalLink, Info } from 'lucide-react';
+import { MapPin, Plus, Wine, FileDown, Loader2, QrCode, Copy, Check, Printer, ExternalLink, Info, Moon, Sun, Monitor } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card } from '../components/ui/Card';
@@ -10,6 +10,7 @@ import { useLocationStore } from '../stores/location';
 import { useWineStore } from '../stores/wine';
 import { apiFetch } from '../lib/api';
 import { useToast } from '../components/ui/Toast';
+import { useThemeStore, type ThemePreference } from '../stores/theme';
 
 const PUBLIC_BASE = import.meta.env.VITE_PUBLIC_BASE_URL || '';
 
@@ -17,6 +18,13 @@ const PUBLIC_BASE = import.meta.env.VITE_PUBLIC_BASE_URL || '';
 export function Settings() {
   const { locations, fetchLocations } = useLocationStore();
   const { wines, pendingCount, fetchWines, fetchPending } = useWineStore();
+  const { preference, setPreference } = useThemeStore();
+
+  const themeOptions: { value: ThemePreference; label: string; icon: ReactNode }[] = [
+    { value: 'system', label: 'Auto',   icon: <Monitor size={14} /> },
+    { value: 'light',  label: 'Clair',  icon: <Sun size={14} /> },
+    { value: 'dark',   label: 'Sombre', icon: <Moon size={14} /> },
+  ];
   const [pdfLoading, setPdfLoading] = useState(false);
   const [urlCopied, setUrlCopied] = useState(false);
   const qrContainerRef = useRef<HTMLDivElement>(null);
@@ -94,6 +102,30 @@ export function Settings() {
       <PageHeader title="Réglages" />
 
       <div className="px-4 pt-4 max-w-lg mx-auto space-y-4 pb-8">
+        {/* Apparence */}
+        <Card>
+          <div className="flex items-center gap-2 mb-3">
+            <Moon size={16} className="text-text-muted" />
+            <h3 className="text-sm font-semibold">Apparence</h3>
+          </div>
+          <div className="flex gap-2">
+            {themeOptions.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setPreference(opt.value)}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-[var(--radius-sm)] text-xs font-medium transition-colors cursor-pointer
+                  ${preference === opt.value
+                    ? 'bg-accent/20 text-accent-bright border border-accent/40'
+                    : 'bg-surface-hover text-text-muted hover:text-text border border-transparent'
+                  }`}
+              >
+                {opt.icon}
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </Card>
+
         {/* Locations */}
         <Card>
           <div className="flex items-center gap-2 mb-3">
