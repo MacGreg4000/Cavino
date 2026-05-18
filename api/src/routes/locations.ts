@@ -86,6 +86,34 @@ export async function locationRoutes(app: FastifyInstance) {
       .returning();
 
     if (!updated) return reply.status(404).send({ error: 'Location not found' });
+
+    // Si gridConfig a changé, régénérer les slots manquants (sans toucher aux slots occupés)
+    if (body.gridConfig) {
+      const { rows, cols, labelRows, labelCols, blockedSlots = [] } = body.gridConfig;
+      // Utiliser le nom final de l'emplacement pour le préfixe
+      const locationName = body.name ?? updated.name;
+      const prefix = locationName.substring(0, 2).toUpperCase();
+
+      const slotValues = [];
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const slotId = `${prefix}-${labelRows[r]}${labelCols[c]}`;
+          slotValues.push({
+            id: slotId,
+            locationId: id,
+            rowIndex: r,
+            colIndex: c,
+            isBlocked: blockedSlots.includes(slotId),
+          });
+        }
+      }
+
+      if (slotValues.length > 0) {
+        // ON CONFLICT DO NOTHING : les slots existants (occupés ou non) sont préservés
+        await db.insert(gridSlots).values(slotValues).onConflictDoNothing();
+      }
+    }
+
     return updated;
   });
 
