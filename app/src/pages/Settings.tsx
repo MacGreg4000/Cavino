@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { MapPin, Plus, Wine, FileDown, Loader2, QrCode, Copy, Check, Printer, ExternalLink, Info, Moon, Sun, Monitor } from 'lucide-react';
+import { MapPin, Plus, Wine, FileDown, Loader2, QrCode, Copy, Check, Printer, ExternalLink, Info, Moon, Sun, Monitor, Grid3x3 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card } from '../components/ui/Card';
@@ -26,6 +26,7 @@ export function Settings() {
     { value: 'dark',   label: 'Sombre', icon: <Moon size={14} /> },
   ];
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [catalogLoading, setCatalogLoading] = useState(false);
   const [urlCopied, setUrlCopied] = useState(false);
   const qrContainerRef = useRef<HTMLDivElement>(null);
   const publicUrl = `${PUBLIC_BASE || window.location.origin}/public`;
@@ -87,13 +88,36 @@ export function Settings() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'carte-des-vins.pdf';
+      a.download = 'carte-des-vins-illustree.pdf';
       a.click();
       URL.revokeObjectURL(url);
     } catch {
       toast('error', 'Erreur lors de la génération du PDF');
     } finally {
       setPdfLoading(false);
+    }
+  };
+
+  const handleDownloadCatalog = async () => {
+    setCatalogLoading(true);
+    try {
+      const resp = await apiFetch('/api/pdf/wine-list?template=catalog');
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: 'Erreur inconnue' }));
+        toast('error', err.error || 'Impossible de générer le catalogue');
+        return;
+      }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'catalogue-des-vins.pdf';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast('error', 'Erreur lors de la génération du catalogue');
+    } finally {
+      setCatalogLoading(false);
     }
   };
 
@@ -189,17 +213,30 @@ export function Settings() {
             Génère la carte des vins en PDF — choisissez le format avant de télécharger.
           </p>
 
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={handleDownloadPdf}
-            disabled={pdfLoading}
-          >
-            {pdfLoading
-              ? <><Loader2 size={14} className="animate-spin" /> Génération…</>
-              : <><FileDown size={14} /> Télécharger la carte des vins</>
-            }
-          </Button>
+          <div className="flex flex-col gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleDownloadPdf}
+              disabled={pdfLoading || catalogLoading}
+            >
+              {pdfLoading
+                ? <><Loader2 size={14} className="animate-spin" /> Génération…</>
+                : <><FileDown size={14} /> Carte des vins illustrée</>
+              }
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleDownloadCatalog}
+              disabled={pdfLoading || catalogLoading}
+            >
+              {catalogLoading
+                ? <><Loader2 size={14} className="animate-spin" /> Génération…</>
+                : <><Grid3x3 size={14} /> Catalogue photo</>
+              }
+            </Button>
+          </div>
         </Card>
 
         {/* QR Code public */}

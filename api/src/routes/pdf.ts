@@ -723,6 +723,252 @@ ${pages}
 </html>`;
 }
 
+// ─── Catalogue photo (template=catalog) ──────────────────────────────────────
+
+function buildHTMLcatalog(
+  allWines: Record<string, any>[],
+  photosPath: string,
+  title: string,
+  slotLookup: Map<string, SlotRow>,
+  gridsByLocation: Map<string, LocationGridData>,
+): string {
+  const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+
+  const TYPE_ACCENT_CAT: Record<string, string> = {
+    rouge: '#7B1A1A', blanc: '#A07820', rose: '#A8174E',
+    champagne: '#7A3300', mousseux: '#7A3300',
+    petillant: '#044F36', moelleux: '#4A1A90', fortifie: '#2D2880',
+    spiritueux: '#2C3240', autre: '#2C3240',
+  };
+  const TYPE_LABEL: Record<string, string> = {
+    rouge: 'Rouge', blanc: 'Blanc', rose: 'Rosé',
+    champagne: 'Champagne', mousseux: 'Mousseux',
+    petillant: 'Pétillant', moelleux: 'Moelleux', fortifie: 'Fortifié',
+    spiritueux: 'Spiritueux', autre: 'Autre',
+  };
+
+  const catalogCard = (w: Record<string, any>): string => {
+    const imgSrc    = photoBase64(w.photoUrl, photosPath);
+    const name      = esc(trunc(w.name || 'Sans nom', 42));
+    const vintage   = w.vintage ? String(w.vintage) : (w.nonVintage ? 'NV' : '');
+    const appel     = esc(w.appellation || w.region || '');
+    const qty       = w.quantity ?? 0;
+    const typeKey   = (w.type || 'autre').toLowerCase();
+    const typeClr   = TYPE_ACCENT_CAT[typeKey] || '#2C3240';
+    const typeLabel = TYPE_LABEL[typeKey] || esc(w.type || '');
+
+    const photoEl = imgSrc
+      ? `<img src="${imgSrc}" alt="${name}" />`
+      : `<div class="cat-placeholder">🍷</div>`;
+
+    // Mini rack — premier rack seulement (compact)
+    const wineSlotIds: string[] = w.slotIds ?? [];
+    const slotsByLoc = new Map<string, Set<string>>();
+    for (const sid of wineSlotIds) {
+      const slotData = slotLookup.get(sid);
+      if (!slotData) continue;
+      if (!slotsByLoc.has(slotData.locationId)) slotsByLoc.set(slotData.locationId, new Set());
+      slotsByLoc.get(slotData.locationId)!.add(sid);
+    }
+    let rackSvg = '';
+    for (const [locId, wineSlots] of slotsByLoc) {
+      const locData = gridsByLocation.get(locId);
+      if (!locData || !locData.rows || !locData.cols) continue;
+      const svg = miniRackSVG(locData.rows, locData.cols, locData.slotMap, wineSlots, typeClr);
+      if (svg) { rackSvg = svg; break; }
+    }
+
+    const subParts = [vintage ? `<strong>${vintage}</strong>` : '', appel].filter(Boolean);
+
+    return `
+    <div class="cat-card">
+      <div class="cat-photo" style="border-top:3px solid ${typeClr};">
+        ${photoEl}
+        ${qty > 0 ? `<div class="cat-qty">×${qty}</div>` : ''}
+      </div>
+      <div class="cat-info">
+        <div class="cat-name">${name}</div>
+        ${subParts.length ? `<div class="cat-sub">${subParts.join(' · ')}</div>` : ''}
+        <div class="cat-footer">
+          <div class="cat-type">
+            <span class="cat-dot" style="background:${typeClr};"></span>
+            <span class="cat-type-label">${typeLabel}</span>
+          </div>
+          ${rackSvg ? `<div class="cat-rack">${rackSvg}</div>` : ''}
+        </div>
+      </div>
+    </div>`;
+  };
+
+  const cards = allWines.map(catalogCard).join('\n');
+
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Liberation Sans', 'Noto Sans', Arial, sans-serif;
+    background: #F6F3EE;
+    color: #1A1410;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
+  @page { size: A4; margin: 12mm 12mm 14mm 12mm; }
+
+  /* En-tête */
+  .doc-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding-bottom: 8px;
+    border-bottom: 2px solid #1A1410;
+    margin-bottom: 14px;
+  }
+  .doc-title {
+    font-family: 'Liberation Serif', Georgia, serif;
+    font-size: 18px;
+    font-weight: 400;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #1A1410;
+  }
+  .doc-meta {
+    font-size: 8px;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    color: #9CA3AF;
+    text-align: right;
+    line-height: 1.6;
+  }
+
+  /* Grille 3 colonnes */
+  .cat-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+
+  /* Carte */
+  .cat-card {
+    background: #fff;
+    border-radius: 6px;
+    overflow: hidden;
+    break-inside: avoid;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+
+  /* Zone photo */
+  .cat-photo {
+    width: 100%;
+    height: 200px;
+    background: #F9F7F4;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .cat-photo img {
+    max-height: 192px;
+    max-width: 88%;
+    object-fit: contain;
+    display: block;
+  }
+  .cat-placeholder {
+    font-size: 36px;
+    color: #D1C9C0;
+  }
+  .cat-qty {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    background: rgba(26,20,16,0.60);
+    color: #FAF7F3;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: 'Liberation Mono', 'Courier New', monospace;
+  }
+
+  /* Zone info */
+  .cat-info { padding: 8px 9px 9px; }
+  .cat-name {
+    font-weight: 700;
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #1A1410;
+    line-height: 1.3;
+  }
+  .cat-sub {
+    font-size: 9.5px;
+    color: #6B7280;
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .cat-sub strong { color: #B8922E; font-weight: 600; }
+  .cat-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 6px;
+    gap: 4px;
+  }
+  .cat-type { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+  .cat-dot  { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .cat-type-label { font-size: 9px; color: #6B7280; letter-spacing: 0.04em; }
+  .cat-rack { flex-shrink: 0; line-height: 0; }
+
+  /* Pied de page */
+  .doc-footer {
+    margin-top: 14px;
+    padding-top: 7px;
+    border-top: 1px solid #DDD7CE;
+    display: flex;
+    justify-content: space-between;
+    color: #9CA3AF;
+    font-size: 7.5px;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+  }
+
+  @media print {
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    .cat-card { page-break-inside: avoid; break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<div class="doc-header">
+  <div class="doc-title">${esc(title)}</div>
+  <div class="doc-meta">
+    Catalogue &middot; ${allWines.length} référence${allWines.length > 1 ? 's' : ''}<br>
+    ${today}
+  </div>
+</div>
+
+<div class="cat-grid">
+${cards}
+</div>
+
+<div class="doc-footer">
+  <span>${esc(title)}</span>
+  <span>Catalogue des vins &middot; ${new Date().getFullYear()}</span>
+</div>
+
+</body>
+</html>`;
+}
+
 // ─── Route ────────────────────────────────────────────────────────────────────
 
 export async function pdfRoutes(app: FastifyInstance) {
@@ -747,7 +993,7 @@ export async function pdfRoutes(app: FastifyInstance) {
     let slotLookup     = new Map<string, SlotRow>();
     let gridsByLocation = new Map<string, LocationGridData>();
 
-    if (template === 'v2') {
+    if (template === 'v2' || template === 'catalog') {
       const allWineSlotIds = [...new Set(allWines.flatMap(w => (w.slotIds as string[] | null) ?? []))];
 
       if (allWineSlotIds.length > 0) {
@@ -785,19 +1031,23 @@ export async function pdfRoutes(app: FastifyInstance) {
       }
     }
 
-    // ── QR codes ──────────────────────────────────────────────────────────────
+    // ── QR codes (pas nécessaire pour le catalogue) ───────────────────────────
     const qrSize = template === 'v2' ? 90 : 60;
     const qrMap = new Map<string, string>();
-    await Promise.all(
-      allWines.map(async (w) => {
-        const url = `${publicBase}/public/wine/${w.id}`;
-        qrMap.set(w.id, await makeQR(url, qrSize));
-      })
-    );
+    if (template !== 'catalog') {
+      await Promise.all(
+        allWines.map(async (w) => {
+          const url = `${publicBase}/public/wine/${w.id}`;
+          qrMap.set(w.id, await makeQR(url, qrSize));
+        })
+      );
+    }
 
     const html = template === 'v2'
       ? buildHTMLv2(allWines as Record<string, any>[], photosPath, caveTitle, locMap, qrMap, slotLookup, gridsByLocation)
-      : buildHTML(allWines as Record<string, any>[], photosPath, caveTitle, locMap, qrMap);
+      : template === 'catalog'
+        ? buildHTMLcatalog(allWines as Record<string, any>[], photosPath, caveTitle, slotLookup, gridsByLocation)
+        : buildHTML(allWines as Record<string, any>[], photosPath, caveTitle, locMap, qrMap);
 
     const browser = await puppeteer.launch({
       executablePath: CHROME,
@@ -821,7 +1071,10 @@ export async function pdfRoutes(app: FastifyInstance) {
         margin: { top: '14mm', right: '16mm', bottom: '16mm', left: '16mm' },
       });
 
-      const filename = template === 'v2' ? 'carte-des-vins-illustree.pdf' : 'carte-des-vins.pdf';
+      const filename =
+        template === 'v2'      ? 'carte-des-vins-illustree.pdf' :
+        template === 'catalog' ? 'catalogue-des-vins.pdf' :
+                                 'carte-des-vins.pdf';
       reply.raw.setHeader('Content-Type', 'application/pdf');
       reply.raw.setHeader('Content-Disposition', `inline; filename="${filename}"`);
       reply.raw.end(pdf);
