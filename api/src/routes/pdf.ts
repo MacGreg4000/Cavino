@@ -781,8 +781,8 @@ function buildHTMLcatalog(
     const subParts = [vintage ? `<strong>${vintage}</strong>` : '', appel].filter(Boolean);
 
     return `
-    <div class="cat-card">
-      <div class="cat-photo" style="border-top:3px solid ${typeClr};">
+    <div class="cat-card" style="--tc:${typeClr};">
+      <div class="cat-photo">
         ${photoEl}
         ${qty > 0 ? `<div class="cat-qty">×${qty}</div>` : ''}
       </div>
@@ -811,131 +811,158 @@ function buildHTMLcatalog(
 
   body {
     font-family: 'Liberation Sans', 'Noto Sans', Arial, sans-serif;
-    background: #F6F3EE;
-    color: #1A1410;
+    background: #ffffff;
+    color: #111;
     font-size: 11px;
     line-height: 1.4;
   }
 
-  @page { size: A4; margin: 12mm 12mm 14mm 12mm; }
+  @page { size: A4; margin: 11mm 11mm 13mm 11mm; }
 
-  /* En-tête */
+  /* ── En-tête ─────────────────────────────────────────── */
   .doc-header {
     display: flex;
     justify-content: space-between;
-    align-items: baseline;
-    padding-bottom: 8px;
-    border-bottom: 2px solid #1A1410;
-    margin-bottom: 14px;
+    align-items: flex-end;
+    padding-bottom: 6px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid #111;
   }
+  .doc-header-left { display: flex; flex-direction: column; gap: 1px; }
   .doc-title {
     font-family: 'Liberation Serif', Georgia, serif;
-    font-size: 18px;
+    font-size: 20px;
     font-weight: 400;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.15em;
     text-transform: uppercase;
-    color: #1A1410;
+    color: #111;
+    line-height: 1;
+  }
+  .doc-tagline {
+    font-size: 7.5px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: #9CA3AF;
   }
   .doc-meta {
-    font-size: 8px;
-    letter-spacing: 0.10em;
+    font-size: 7.5px;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
     color: #9CA3AF;
     text-align: right;
-    line-height: 1.6;
+    line-height: 1.7;
   }
 
-  /* Grille 3 colonnes */
+  /* ── Grille 3 colonnes ───────────────────────────────── */
   .cat-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
+    gap: 8px;
   }
 
-  /* Carte */
+  /* ── Carte ───────────────────────────────────────────── */
   .cat-card {
     background: #fff;
-    border-radius: 6px;
+    border: 1px solid #E5E7EB;
+    border-top: 3px solid var(--tc);
     overflow: hidden;
     break-inside: avoid;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
   }
 
   /* Zone photo */
   .cat-photo {
     width: 100%;
-    height: 200px;
-    background: #F9F7F4;
+    height: 165px;
+    background: #ffffff;
     display: flex;
     align-items: center;
     justify-content: center;
     position: relative;
     overflow: hidden;
+    border-bottom: 1px solid #F3F4F6;
   }
   .cat-photo img {
-    max-height: 192px;
-    max-width: 88%;
+    max-height: 158px;
+    max-width: 86%;
     object-fit: contain;
     display: block;
   }
   .cat-placeholder {
-    font-size: 36px;
-    color: #D1C9C0;
+    font-size: 30px;
+    color: #D1D5DB;
   }
   .cat-qty {
     position: absolute;
-    top: 6px;
+    bottom: 5px;
     right: 6px;
-    background: rgba(26,20,16,0.60);
-    color: #FAF7F3;
-    font-size: 9px;
+    background: rgba(17,17,17,0.55);
+    color: #fff;
+    font-size: 8.5px;
     font-weight: 700;
-    padding: 1px 5px;
-    border-radius: 3px;
+    padding: 1px 4px;
     font-family: 'Liberation Mono', 'Courier New', monospace;
+    letter-spacing: 0.03em;
   }
 
   /* Zone info */
-  .cat-info { padding: 8px 9px 9px; }
+  .cat-info { padding: 7px 8px 8px; }
   .cat-name {
     font-weight: 700;
-    font-size: 11px;
+    font-size: 10.5px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    color: #1A1410;
+    color: #111;
     line-height: 1.3;
+    letter-spacing: 0.01em;
   }
   .cat-sub {
-    font-size: 9.5px;
+    font-size: 9px;
     color: #6B7280;
     margin-top: 2px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .cat-sub strong { color: #B8922E; font-weight: 600; }
+  .cat-sub strong { color: #92600E; font-weight: 600; }
+
   .cat-footer {
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     justify-content: space-between;
-    margin-top: 6px;
+    margin-top: 5px;
     gap: 4px;
+    min-height: 0;
   }
-  .cat-type { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
-  .cat-dot  { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-  .cat-type-label { font-size: 9px; color: #6B7280; letter-spacing: 0.04em; }
-  .cat-rack { flex-shrink: 0; line-height: 0; }
+  .cat-type { display: flex; align-items: center; gap: 3px; flex-shrink: 0; }
+  .cat-dot  { display: inline-block; width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .cat-type-label { font-size: 8.5px; color: #6B7280; }
 
-  /* Pied de page */
+  /* Rack SVG : plafonné pour ne pas gonfler la carte */
+  .cat-rack {
+    flex-shrink: 0;
+    line-height: 0;
+    max-height: 46px;
+    max-width: 66px;
+    overflow: hidden;
+  }
+  .cat-rack svg {
+    max-height: 46px !important;
+    max-width: 66px !important;
+    height: auto !important;
+    width:  auto !important;
+    display: block;
+  }
+
+  /* ── Pied de page ────────────────────────────────────── */
   .doc-footer {
-    margin-top: 14px;
-    padding-top: 7px;
-    border-top: 1px solid #DDD7CE;
+    margin-top: 12px;
+    padding-top: 5px;
+    border-top: 1px solid #E5E7EB;
     display: flex;
     justify-content: space-between;
     color: #9CA3AF;
-    font-size: 7.5px;
+    font-size: 7px;
     letter-spacing: 0.10em;
     text-transform: uppercase;
   }
@@ -949,9 +976,12 @@ function buildHTMLcatalog(
 <body>
 
 <div class="doc-header">
-  <div class="doc-title">${esc(title)}</div>
+  <div class="doc-header-left">
+    <div class="doc-title">${esc(title)}</div>
+    <div class="doc-tagline">Catalogue des vins</div>
+  </div>
   <div class="doc-meta">
-    Catalogue &middot; ${allWines.length} référence${allWines.length > 1 ? 's' : ''}<br>
+    ${allWines.length} référence${allWines.length > 1 ? 's' : ''}<br>
     ${today}
   </div>
 </div>
@@ -962,7 +992,7 @@ ${cards}
 
 <div class="doc-footer">
   <span>${esc(title)}</span>
-  <span>Catalogue des vins &middot; ${new Date().getFullYear()}</span>
+  <span>${new Date().getFullYear()}</span>
 </div>
 
 </body>
