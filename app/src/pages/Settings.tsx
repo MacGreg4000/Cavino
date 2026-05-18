@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Settings as SettingsIcon, MapPin, Plus, Wine, FileDown, Loader2, QrCode, Copy, Check, Printer, ExternalLink } from 'lucide-react';
+import { Settings as SettingsIcon, MapPin, Plus, Wine, FileDown, Loader2, QrCode, Copy, Check, Printer, ExternalLink, Info } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card } from '../components/ui/Card';
@@ -228,16 +228,25 @@ export function Settings() {
           </div>
         </Card>
 
-        {/* About */}
+        {/* Version */}
         <Card>
           <div className="flex items-center gap-2 mb-2">
-            <SettingsIcon size={16} className="text-text-muted" />
-            <h3 className="text-sm font-semibold">À propos</h3>
+            <Info size={16} className="text-text-muted" />
+            <h3 className="text-sm font-semibold">Version</h3>
           </div>
           <div className="space-y-1 text-sm text-text-secondary">
-            <p>Cavino v4.0</p>
-            <p>Cave Noire — Luxury Dark</p>
-            <p className="text-text-muted text-xs mt-2">Architecture offline-first, zéro IA en production</p>
+            <div className="flex justify-between">
+              <span>Application</span>
+              <span className="font-mono text-text-muted text-xs">Cavino</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Version</span>
+              <span className="font-mono text-text-muted text-xs">4.0</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Dernière mise à jour</span>
+              <span className="font-mono text-text-muted text-xs">{new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}</span>
+            </div>
           </div>
         </Card>
       </div>
