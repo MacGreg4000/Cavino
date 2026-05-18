@@ -5,6 +5,7 @@ import { Badge } from '../../components/ui/Badge';
 import { WinePhoto } from '../../components/ui/WinePhoto';
 import type { Wine as WineType } from '../../stores/wine';
 import { normalizeForSearch, matchesNormalizedSearch } from '../../lib/search-normalize';
+import { slotLabel } from '../../lib/slot-label';
 
 function getGardeStatus(wine: WineType): { label: string; variant: 'gold' | 'default' | 'danger' | 'warning' } {
   const year = new Date().getFullYear();
@@ -140,7 +141,7 @@ export function PublicWineList() {
                   <span className="font-mono text-xs text-text-muted">×{wine.quantity ?? 0}</span>
                   {wine.slotIds?.[0] && (
                     <span className="font-mono text-[10px] text-text-muted bg-surface-hover px-1.5 py-0.5 rounded">
-                      {wine.slotIds[0]}
+                      {slotLabel(wine.slotIds[0])}
                     </span>
                   )}
                   {wine.drinkUntil && (

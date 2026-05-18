@@ -9,6 +9,7 @@ import { SearchBar } from '../components/ui/Input';
 import { EmptyState } from '../components/ui/EmptyState';
 import { useWineStore, type Wine as WineType } from '../stores/wine';
 import { normalizeForSearch, matchesNormalizedSearch } from '../lib/search-normalize';
+import { slotLabel } from '../lib/slot-label';
 
 const wineTypeVariant = (type?: string) => {
   switch (type?.toLowerCase()) {
@@ -79,7 +80,7 @@ function WineListCard({ wine }: { wine: WineType }) {
           )}
           {wine.slotIds?.[0] && (
             <span className="font-mono text-[10px] text-text-muted bg-surface-active px-1.5 py-0.5 rounded">
-              {wine.slotIds[0]}
+              {slotLabel(wine.slotIds[0])}
             </span>
           )}
         </div>

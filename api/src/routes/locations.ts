@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { eq } from 'drizzle-orm';
+import { eq, and, isNull } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { locations, gridSlots, wines } from '../db/schema.js';
 import { z } from 'zod';
@@ -36,9 +36,9 @@ export async function locationRoutes(app: FastifyInstance) {
       gridConfig: body.gridConfig,
     }).returning();
 
-    // Générer les slots de la grille
+    // Générer les slots — préfixe basé sur l'UUID pour éviter les collisions entre emplacements
     const { rows, cols, labelRows, labelCols, blockedSlots } = body.gridConfig;
-    const prefix = body.name.substring(0, 2).toUpperCase();
+    const prefix = location.id.substring(0, 8).toUpperCase();
 
     const slotValues = [];
     for (let r = 0; r < rows; r++) {
@@ -87,12 +87,15 @@ export async function locationRoutes(app: FastifyInstance) {
 
     if (!updated) return reply.status(404).send({ error: 'Location not found' });
 
-    // Si gridConfig a changé, régénérer les slots manquants (sans toucher aux slots occupés)
+    // Si gridConfig a changé, régénérer les slots
     if (body.gridConfig) {
       const { rows, cols, labelRows, labelCols, blockedSlots = [] } = body.gridConfig;
-      // Utiliser le nom final de l'emplacement pour le préfixe
-      const locationName = body.name ?? updated.name;
-      const prefix = locationName.substring(0, 2).toUpperCase();
+      // Préfixe basé sur l'UUID de l'emplacement — jamais de collision entre racks
+      const prefix = id.substring(0, 8).toUpperCase();
+
+      // Supprimer les slots non occupés de cet emplacement (libres à recréer)
+      await db.delete(gridSlots)
+        .where(and(eq(gridSlots.locationId, id), isNull(gridSlots.wineId)));
 
       const slotValues = [];
       for (let r = 0; r < rows; r++) {
@@ -109,7 +112,7 @@ export async function locationRoutes(app: FastifyInstance) {
       }
 
       if (slotValues.length > 0) {
-        // ON CONFLICT DO NOTHING : les slots existants (occupés ou non) sont préservés
+        // ON CONFLICT DO NOTHING protège les slots occupés qui ont gardé leurs anciens IDs
         await db.insert(gridSlots).values(slotValues).onConflictDoNothing();
       }
     }

@@ -17,6 +17,7 @@ import { useWineStore, type Wine } from '../stores/wine';
 import { useLocationStore, type GridSlot } from '../stores/location';
 import { useToast } from '../components/ui/Toast';
 import { BOTTLE_FORMATS, getBottleFormat, isStandardBottle } from '../lib/bottle-formats';
+import { slotLabel } from '../lib/slot-label';
 
 const PUBLIC_BASE = import.meta.env.VITE_PUBLIC_BASE_URL || '';
 
@@ -813,7 +814,7 @@ export function WineDetail() {
               >
                 <MapPin size={10} className="text-text-muted" />
                 <span className="font-mono text-[13px] text-text-secondary">
-                  {wine.slotIds.join(', ')}
+                  {wine.slotIds.map(slotLabel).join(', ')}
                 </span>
                 <PencilLine size={10} className="text-text-muted ml-0.5" />
               </button>
