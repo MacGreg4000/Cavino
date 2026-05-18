@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Settings as SettingsIcon, MapPin, Plus, Wine, FileDown, Loader2, QrCode, Copy, Check, Printer, ExternalLink, Info } from 'lucide-react';
+import { MapPin, Plus, Wine, FileDown, Loader2, QrCode, Copy, Check, Printer, ExternalLink, Info } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card } from '../components/ui/Card';
