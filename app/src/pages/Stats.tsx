@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { BarChart3, Wine, TrendingUp, MapPin } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { BarChart3, Wine, TrendingUp, MapPin, GlassWater, ChevronRight } from 'lucide-react';
 import { apiFetch } from '../lib/api';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { PageHeader } from '../components/layout/PageHeader';
@@ -12,6 +13,8 @@ interface StatsData {
   pendingCount: number;
   drinkThisYear: number;
   totalTastings: number;
+  totalConsumed: number;
+  consumedThisYear: number;
   byType: Array<{ type: string; count: number; totalQuantity: string }>;
   byRegion: Array<{ region: string; count: number; totalQuantity: string }>;
 }
@@ -227,14 +230,31 @@ export function Stats() {
           )}
         </Card>
 
-        {/* Tastings */}
-        <Card>
-          <div className="flex items-center gap-2">
-            <BarChart3 size={16} className="text-info" />
-            <h3 className="text-sm font-semibold">Dégustations</h3>
-            <span className="ml-auto font-mono text-sm text-text-secondary">{stats.totalTastings}</span>
-          </div>
-        </Card>
+        {/* Bouteilles débouchées */}
+        <Link to="/historique">
+          <Card hover>
+            <div className="flex items-center gap-2">
+              <GlassWater size={16} className="text-accent" />
+              <h3 className="text-sm font-semibold">Bouteilles débouchées</h3>
+              <ChevronRight size={14} className="ml-auto text-text-muted" />
+            </div>
+            <div className="flex items-baseline gap-3 mt-3">
+              <div className="text-center">
+                <p className="text-2xl font-display font-bold text-text">{stats.totalConsumed ?? 0}</p>
+                <p className="text-[10px] text-text-muted">au total</p>
+              </div>
+              {(stats.consumedThisYear ?? 0) > 0 && (
+                <>
+                  <span className="text-border">·</span>
+                  <div className="text-center">
+                    <p className="text-2xl font-display font-bold text-accent-bright">{stats.consumedThisYear}</p>
+                    <p className="text-[10px] text-text-muted">cette année</p>
+                  </div>
+                </>
+              )}
+            </div>
+          </Card>
+        </Link>
       </div>
     </div>
   );

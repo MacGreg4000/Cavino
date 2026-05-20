@@ -54,9 +54,18 @@ export async function statsRoutes(app: FastifyInstance) {
       .where(sql`${wines.importStatus} = 'available' AND ${wines.drinkUntil} IS NOT NULL AND ${wines.drinkUntil} <= ${currentYear}`);
 
     // Dégustations récentes
-    const recentTastings = await db.select({
-      count: count(),
-    }).from(tastingLogs);
+    const recentTastings = await db.select({ count: count() }).from(tastingLogs);
+
+    // Bouteilles débouchées (consumed)
+    const [consumedTotal] = await db.select({ count: count() })
+      .from(wines).where(eq(wines.importStatus, 'consumed'));
+
+    const consumedThisYearRows = await db.execute(sql`
+      SELECT COUNT(*)::int AS count FROM wines
+      WHERE import_status = 'consumed'
+        AND EXTRACT(YEAR FROM updated_at) = ${currentYear}
+    `);
+    const consumedThisYear = Number((consumedThisYearRows as any)[0]?.count) || 0;
 
     return {
       totalBottles: Number(totals.totalBottles) || 0,
@@ -65,6 +74,8 @@ export async function statsRoutes(app: FastifyInstance) {
       pendingCount: pending.count,
       drinkThisYear: drinkThisYear.count,
       totalTastings: recentTastings[0].count,
+      totalConsumed: consumedTotal.count,
+      consumedThisYear,
       byType,
       byRegion,
     };
