@@ -11,42 +11,94 @@ import { useWineStore, type Wine as WineType } from '../stores/wine';
 import { normalizeForSearch, matchesNormalizedSearch } from '../lib/search-normalize';
 import { slotLabel } from '../lib/slot-label';
 
+// ── Ordre et labels des types ──────────────────────────────────────────────────
+
+const TYPE_ORDER = [
+  {
+    key: 'champagne',
+    label: 'Champagne & Mousseux',
+    match: (t: string) =>
+      t.includes('champagne') || t.includes('mousseux') || t.includes('effervescent') ||
+      t.includes('crémant') || t.includes('cremant') || t.includes('pétillant') || t.includes('petillant'),
+  },
+  {
+    key: 'blanc',
+    label: 'Blancs',
+    match: (t: string) => t.includes('blanc'),
+  },
+  {
+    key: 'rosé',
+    label: 'Rosés',
+    match: (t: string) => t.includes('ros'),
+  },
+  {
+    key: 'rouge',
+    label: 'Rouges',
+    match: (t: string) => t.includes('rouge'),
+  },
+  {
+    key: 'moelleux',
+    label: 'Moelleux & Liquoreux',
+    match: (t: string) => t.includes('moelleux') || t.includes('liquoreux'),
+  },
+  {
+    key: 'fortifié',
+    label: 'Vins Fortifiés',
+    match: (t: string) =>
+      t.includes('fortifi') || t.includes('porto') || t.includes('xér') || t.includes('madè'),
+  },
+  {
+    key: 'autre',
+    label: 'Autres',
+    match: (_: string) => true, // fallback
+  },
+] as const;
+
+type TypeKey = (typeof TYPE_ORDER)[number]['key'];
+
+function wineTypeKey(type?: string | null): TypeKey {
+  const t = (type || '').toLowerCase();
+  return (TYPE_ORDER.find((e) => e.match(t))?.key ?? 'autre') as TypeKey;
+}
+
+// ── Helpers visuels ────────────────────────────────────────────────────────────
+
 const wineTypeVariant = (type?: string) => {
-  switch (type?.toLowerCase()) {
-    case 'rouge': return 'red';
-    case 'blanc': return 'white';
-    case 'rosé': return 'rose';
-    case 'champagne':
-    case 'effervescent': return 'champagne';
-    default: return 'default';
-  }
+  const k = wineTypeKey(type);
+  if (k === 'rouge')     return 'red' as const;
+  if (k === 'blanc')     return 'white' as const;
+  if (k === 'rosé')      return 'rose' as const;
+  if (k === 'champagne') return 'champagne' as const;
+  return 'default' as const;
 };
 
 function typeLeftBorder(type?: string): string {
-  const t = type?.toLowerCase() ?? '';
-  if (t.includes('rouge') || t.includes('red')) return 'border-l-wine-red/70';
-  if (t.includes('blanc') || t.includes('white')) return 'border-l-wine-white/50';
-  if (t.includes('rosé') || t.includes('rose')) return 'border-l-wine-rose/70';
-  if (t.includes('champagne') || t.includes('mousseux') || t.includes('crémant')) return 'border-l-champagne/50';
+  const k = wineTypeKey(type);
+  if (k === 'rouge')     return 'border-l-wine-red/70';
+  if (k === 'blanc')     return 'border-l-wine-white/50';
+  if (k === 'rosé')      return 'border-l-wine-rose/70';
+  if (k === 'champagne') return 'border-l-champagne/50';
   return 'border-l-border';
+}
+
+function typeTopBorder(type?: string): string {
+  return typeLeftBorder(type).replace('border-l-', 'border-t-');
 }
 
 function gardeStatus(wine: WineType): { label: string; variant: 'success' | 'warning' | 'danger' | 'gold' | 'default' } {
   const year = new Date().getFullYear();
-  if (wine.peakFrom && wine.peakUntil && year >= wine.peakFrom && year <= wine.peakUntil) {
+  if (wine.peakFrom && wine.peakUntil && year >= wine.peakFrom && year <= wine.peakUntil)
     return { label: 'Apogée', variant: 'gold' };
-  }
-  if (wine.drinkUntil && year > wine.drinkUntil) {
+  if (wine.drinkUntil && year > wine.drinkUntil)
     return { label: 'Passé', variant: 'danger' };
-  }
-  if (wine.drinkUntil && wine.drinkUntil <= year + 1) {
+  if (wine.drinkUntil && wine.drinkUntil <= year + 1)
     return { label: 'À boire', variant: 'warning' };
-  }
-  if (wine.drinkFrom && year < wine.drinkFrom) {
+  if (wine.drinkFrom && year < wine.drinkFrom)
     return { label: 'Garde', variant: 'default' };
-  }
   return { label: 'Prêt', variant: 'success' };
 }
+
+// ── Cartes ─────────────────────────────────────────────────────────────────────
 
 function WineListCard({ wine }: { wine: WineType }) {
   const garde = gardeStatus(wine);
@@ -93,7 +145,7 @@ function WineGridCard({ wine }: { wine: WineType }) {
   const garde = gardeStatus(wine);
   return (
     <Link to={`/cave/${wine.id}`}>
-      <div className={`bg-surface rounded-[var(--radius-md)] border border-border border-t-4 ${typeLeftBorder(wine.type).replace('border-l-', 'border-t-')} overflow-hidden hover:bg-surface-hover transition-colors active:scale-[0.99]`}>
+      <div className={`bg-surface rounded-[var(--radius-md)] border border-border border-t-4 ${typeTopBorder(wine.type)} overflow-hidden hover:bg-surface-hover transition-colors active:scale-[0.99]`}>
         {wine.photoUrl ? (
           <div className="aspect-[3/4] w-full overflow-hidden">
             <WinePhoto src={wine.photoUrl} alt="" className="h-full w-full" />
@@ -116,27 +168,75 @@ function WineGridCard({ wine }: { wine: WineType }) {
   );
 }
 
+// ── En-tête de section ─────────────────────────────────────────────────────────
+
+function SectionHeader({ label, count }: { label: string; count: number }) {
+  return (
+    <div className="flex items-center gap-2 pt-1 pb-0.5">
+      <span className="text-xs font-semibold text-text-secondary tracking-wide uppercase">
+        {label}
+      </span>
+      <span className="text-[10px] font-mono text-text-muted">{count}</span>
+      <div className="flex-1 h-px bg-border" />
+    </div>
+  );
+}
+
+// ── Page Cave ──────────────────────────────────────────────────────────────────
+
 export function Cave() {
   const { wines, pendingCount, fetchWines, fetchPending } = useWineStore();
-  const [search, setSearch] = useState('');
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [search, setSearch]       = useState('');
+  const [typeFilter, setTypeFilter] = useState<TypeKey | ''>('');
+  const [viewMode, setViewMode]   = useState<'list' | 'grid'>('list');
 
   useEffect(() => {
     fetchWines();
     fetchPending();
   }, [fetchWines, fetchPending]);
 
-  const filtered = wines.filter((w) => {
-    const raw = search.trim();
-    if (!raw) return true;
-    const q = normalizeForSearch(raw);
-    return (
-      matchesNormalizedSearch(w.name, q) ||
-      matchesNormalizedSearch(w.domain, q) ||
-      matchesNormalizedSearch(w.appellation, q) ||
-      matchesNormalizedSearch(w.region, q)
-    );
-  });
+  // ── Filtrage + tri ───────────────────────────────────────────────────────────
+
+  const filtered = wines
+    .filter((w) => {
+      // Filtre type
+      if (typeFilter && wineTypeKey(w.type) !== typeFilter) return false;
+      // Filtre texte
+      const raw = search.trim();
+      if (!raw) return true;
+      const q = normalizeForSearch(raw);
+      return (
+        matchesNormalizedSearch(w.name, q) ||
+        matchesNormalizedSearch(w.domain, q) ||
+        matchesNormalizedSearch(w.appellation, q) ||
+        matchesNormalizedSearch(w.region, q)
+      );
+    })
+    .sort((a, b) => {
+      const ia = TYPE_ORDER.findIndex((e) => e.key === wineTypeKey(a.type));
+      const ib = TYPE_ORDER.findIndex((e) => e.key === wineTypeKey(b.type));
+      if (ia !== ib) return ia - ib;
+      // Au sein du même type : millésime desc, puis nom asc
+      const va = a.vintage ?? 9999;
+      const vb = b.vintage ?? 9999;
+      if (va !== vb) return vb - va;
+      return (a.name || '').localeCompare(b.name || '', 'fr');
+    });
+
+  // Groupes pour les section headers (actifs seulement si pas de filtre type)
+  const showSections = !typeFilter;
+  const groups = showSections
+    ? TYPE_ORDER.map((entry) => ({
+        key:   entry.key,
+        label: entry.label,
+        wines: filtered.filter((w) => wineTypeKey(w.type) === entry.key),
+      })).filter((g) => g.wines.length > 0)
+    : [{ key: '', label: '', wines: filtered }];
+
+  // Pills de filtre : uniquement les types présents dans la cave
+  const availableTypes = TYPE_ORDER.filter((entry) =>
+    wines.some((w) => wineTypeKey(w.type) === entry.key)
+  );
 
   return (
     <div>
@@ -179,31 +279,68 @@ export function Cave() {
           </Link>
         )}
 
-        {/* Search */}
+        {/* Recherche */}
         <SearchBar
           placeholder="Rechercher un vin, domaine, appellation..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="mb-4"
+          className="mb-2"
         />
 
-        {/* Wine list */}
+        {/* Pills de filtre par type */}
+        {availableTypes.length > 1 && (
+          <div className="flex gap-1.5 overflow-x-auto pb-3 scrollbar-hide -mx-4 px-4">
+            <button
+              onClick={() => setTypeFilter('')}
+              className={`shrink-0 text-xs px-3 py-1.5 rounded-full border transition-colors cursor-pointer ${
+                typeFilter === ''
+                  ? 'bg-accent/20 text-accent-bright border-accent/40'
+                  : 'bg-surface-hover text-text-muted border-border hover:text-text'
+              }`}
+            >
+              Tous
+            </button>
+            {availableTypes.map((entry) => (
+              <button
+                key={entry.key}
+                onClick={() => setTypeFilter(typeFilter === entry.key ? '' : entry.key)}
+                className={`shrink-0 text-xs px-3 py-1.5 rounded-full border transition-colors cursor-pointer ${
+                  typeFilter === entry.key
+                    ? 'bg-accent/20 text-accent-bright border-accent/40'
+                    : 'bg-surface-hover text-text-muted border-border hover:text-text'
+                }`}
+              >
+                {entry.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Résultats */}
         {filtered.length === 0 ? (
           <EmptyState
             icon={<Wine size={48} />}
-            title={search ? 'Aucun résultat' : 'Cave vide'}
-            description={search ? 'Essayez un autre terme' : 'Scannez des étiquettes pour commencer'}
+            title={search || typeFilter ? 'Aucun résultat' : 'Cave vide'}
+            description={search || typeFilter ? 'Modifiez votre recherche ou filtre' : 'Scannez des étiquettes pour commencer'}
           />
         ) : viewMode === 'list' ? (
           <div className="flex flex-col gap-2 pb-4">
-            {filtered.map((wine) => (
-              <WineListCard key={wine.id} wine={wine} />
+            {groups.map((group) => (
+              <div key={group.key}>
+                {showSections && <SectionHeader label={group.label} count={group.wines.length} />}
+                {group.wines.map((wine) => <WineListCard key={wine.id} wine={wine} />)}
+              </div>
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3 pb-4">
-            {filtered.map((wine) => (
-              <WineGridCard key={wine.id} wine={wine} />
+          <div className="pb-4 space-y-3">
+            {groups.map((group) => (
+              <div key={group.key}>
+                {showSections && <SectionHeader label={group.label} count={group.wines.length} />}
+                <div className="grid grid-cols-2 gap-3 mt-1">
+                  {group.wines.map((wine) => <WineGridCard key={wine.id} wine={wine} />)}
+                </div>
+              </div>
             ))}
           </div>
         )}
