@@ -20,9 +20,15 @@ export function CellarGrid({ location, slots, onSlotClick, highlightSlots = [], 
   const { rows, cols, labelRows, labelCols } = config;
 
   // Build a slot lookup map by "rowIndex-colIndex"
+  // When two slots share the same position (old-format occupied + new-format empty after rack re-save),
+  // always prefer the occupied slot so the wine remains visible and moveable.
   const slotMap = new Map<string, GridSlot>();
   for (const s of slots) {
-    slotMap.set(`${s.slot.rowIndex}-${s.slot.colIndex}`, s);
+    const key = `${s.slot.rowIndex}-${s.slot.colIndex}`;
+    const existing = slotMap.get(key);
+    if (!existing || (!existing.wine && s.wine)) {
+      slotMap.set(key, s);
+    }
   }
 
   // Use a single CSS grid for the entire board (label column + data columns)

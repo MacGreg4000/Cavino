@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { locations, gridSlots, wines } from '../db/schema.js';
 import { z } from 'zod';
@@ -93,6 +93,33 @@ export async function locationRoutes(app: FastifyInstance) {
       // Préfixe basé sur l'UUID de l'emplacement — jamais de collision entre racks
       const prefix = id.substring(0, 8).toUpperCase();
 
+      // ── Migration : renommer les slots occupés avec l'ancien format vers le nouveau préfixe UUID ──
+      // Récupérer tous les slots occupés de cet emplacement
+      const occupiedSlots = await db.select()
+        .from(gridSlots)
+        .where(and(eq(gridSlots.locationId, id), sql`${gridSlots.wineId} IS NOT NULL`));
+
+      for (const slot of occupiedSlots) {
+        if (slot.rowIndex >= rows || slot.colIndex >= cols) continue; // hors grille
+        const newId = `${prefix}-${labelRows[slot.rowIndex]}${labelCols[slot.colIndex]}`;
+        if (newId === slot.id) continue; // déjà au bon format
+
+        // Supprimer d'abord le slot vide à la même position s'il existe (évite conflit PK)
+        await db.delete(gridSlots)
+          .where(and(eq(gridSlots.id, newId), isNull(gridSlots.wineId)));
+
+        // Renommer le slot occupé vers le nouvel identifiant
+        await db.update(gridSlots).set({ id: newId }).where(eq(gridSlots.id, slot.id));
+
+        // Mettre à jour wine.slotIds pour refléter le nouvel ID
+        if (slot.wineId) {
+          await db.execute(
+            sql`UPDATE wines SET slot_ids = array_replace(slot_ids, ${slot.id}, ${newId}) WHERE id = ${slot.wineId}`
+          );
+        }
+      }
+      // ── Fin migration ──
+
       // Supprimer les slots non occupés de cet emplacement (libres à recréer)
       await db.delete(gridSlots)
         .where(and(eq(gridSlots.locationId, id), isNull(gridSlots.wineId)));
@@ -112,7 +139,7 @@ export async function locationRoutes(app: FastifyInstance) {
       }
 
       if (slotValues.length > 0) {
-        // ON CONFLICT DO NOTHING protège les slots occupés qui ont gardé leurs anciens IDs
+        // ON CONFLICT DO NOTHING : les slots occupés viennent d'être renommés, plus de collision
         await db.insert(gridSlots).values(slotValues).onConflictDoNothing();
       }
     }
@@ -127,7 +154,7 @@ export async function locationRoutes(app: FastifyInstance) {
     const [location] = await db.select().from(locations).where(eq(locations.id, id));
     if (!location) return reply.status(404).send({ error: 'Location not found' });
 
-    const slots = await db.select({
+    const rawSlots = await db.select({
       slot: gridSlots,
       wine: {
         id: wines.id,
@@ -142,6 +169,19 @@ export async function locationRoutes(app: FastifyInstance) {
       .from(gridSlots)
       .leftJoin(wines, eq(gridSlots.wineId, wines.id))
       .where(eq(gridSlots.locationId, id));
+
+    // Dédupliquer par position (rowIndex, colIndex) : préférer le slot occupé
+    // Cas possible quand un rack a été re-sauvé après le passage aux IDs UUID,
+    // laissant coexister un ancien slot occupé et un nouveau slot vide à la même case.
+    const posMap = new Map<string, typeof rawSlots[0]>();
+    for (const s of rawSlots) {
+      const key = `${s.slot.rowIndex}-${s.slot.colIndex}`;
+      const existing = posMap.get(key);
+      if (!existing || (!existing.wine && s.wine)) {
+        posMap.set(key, s);
+      }
+    }
+    const slots = Array.from(posMap.values());
 
     return { location, slots };
   });
