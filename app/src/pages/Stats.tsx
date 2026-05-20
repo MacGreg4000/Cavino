@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { BarChart3, Wine, TrendingUp, MapPin, GlassWater, ChevronRight } from 'lucide-react';
+import { Wine, TrendingUp, MapPin, GlassWater, ChevronRight } from 'lucide-react';
 import { apiFetch } from '../lib/api';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { PageHeader } from '../components/layout/PageHeader';

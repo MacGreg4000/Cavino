@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { Wine, GlassWater, Calendar, Star } from 'lucide-react';
 import { WinePhoto } from '../components/ui/WinePhoto';
 import { PageHeader } from '../components/layout/PageHeader';
-import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { SearchBar } from '../components/ui/Input';
 import { EmptyState } from '../components/ui/EmptyState';
