@@ -126,13 +126,21 @@ export function SlotPicker({
     if (slot.slot.isBlocked) return;
     const slotId = slot.slot.id;
     const isDeselecting = selectedSlots.includes(slotId);
-    // Autoriser le clic sur un slot occupé uniquement pour désélectionner
-    // ses propres cases (sinon on ne peut jamais déplacer une bouteille)
+
+    // Bloquer uniquement les cases d'UN AUTRE vin (pas les propres cases de ce vin)
     if (slot.wine && !isDeselecting) return;
-    if (!isDeselecting && maxSlots !== undefined && selectedSlots.length >= maxSlots) return;
-    const newSelection = isDeselecting
-      ? selectedSlots.filter((s) => s !== slotId)
-      : [...selectedSlots, slotId];
+
+    let newSelection: string[];
+    if (isDeselecting) {
+      // Désélectionner cette case
+      newSelection = selectedSlots.filter((s) => s !== slotId);
+    } else if (maxSlots !== undefined && selectedSlots.length >= maxSlots) {
+      // maxSlots atteint → remplacer toute la sélection par cette nouvelle case
+      // (comportement "déplacer" : clic direct sans devoir d'abord désélectionner)
+      newSelection = [slotId];
+    } else {
+      newSelection = [...selectedSlots, slotId];
+    }
     onSelect(newSelection, locationId);
   };
 
@@ -211,9 +219,12 @@ export function SlotPicker({
     <div className="space-y-4">
       <p className="text-xs text-text-secondary leading-relaxed">
         Touchez une case vide pour la sélectionner{' '}
-        <strong className="text-wine-red">(cadre rouge)</strong>.
-        {remaining !== null && (
-          <span className="text-text-muted"> — {remaining} restante{remaining !== 1 ? 's' : ''}</span>
+        <strong className="text-gold">(cadre doré)</strong>.{' '}
+        {selectedSlots.length > 0 && (
+          <span className="text-text-muted">Cliquez une nouvelle case pour déplacer directement.</span>
+        )}
+        {remaining !== null && remaining > 0 && selectedSlots.length === 0 && (
+          <span className="text-text-muted"> — {remaining} case{remaining !== 1 ? 's' : ''} à choisir</span>
         )}
       </p>
 
