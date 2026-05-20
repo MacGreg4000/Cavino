@@ -732,9 +732,13 @@ function buildHTMLcatalog(
   slotLookup: Map<string, SlotRow>,
   gridsByLocation: Map<string, LocationGridData>,
 ): string {
-  const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
-  const year  = new Date().getFullYear();
+  const today        = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+  const year         = new Date().getFullYear();
   const totalBottles = allWines.reduce((s, w) => s + (w.quantity ?? 1), 0);
+
+  // ── Référentiels de types ──────────────────────────────────────────────────
+
+  const TYPE_ORDER_CAT = ['rouge', 'blanc', 'rose', 'champagne', 'mousseux', 'petillant', 'moelleux', 'fortifie', 'spiritueux', 'autre'];
 
   const TYPE_ACCENT_CAT: Record<string, string> = {
     rouge: '#7B1A1A', blanc: '#A07820', rose: '#A8174E',
@@ -742,12 +746,84 @@ function buildHTMLcatalog(
     petillant: '#044F36', moelleux: '#4A1A90', fortifie: '#2D2880',
     spiritueux: '#2C3240', autre: '#2C3240',
   };
-  const TYPE_LABEL: Record<string, string> = {
+  const TYPE_LABEL_CAT: Record<string, string> = {
+    rouge: 'Vins Rouges', blanc: 'Vins Blancs', rose: 'Vins Rosés',
+    champagne: 'Champagnes & Crémants', mousseux: 'Mousseux & Effervescents',
+    petillant: 'Pétillants Naturels', moelleux: 'Moelleux & Liquoreux',
+    fortifie: 'Vins Fortifiés', spiritueux: 'Spiritueux', autre: 'Autres',
+  };
+  const TYPE_LABEL_SHORT: Record<string, string> = {
     rouge: 'Rouge', blanc: 'Blanc', rose: 'Rosé',
     champagne: 'Champagne', mousseux: 'Mousseux',
     petillant: 'Pétillant', moelleux: 'Moelleux', fortifie: 'Fortifié',
     spiritueux: 'Spiritueux', autre: 'Autre',
   };
+
+  const wineTypeKeyCat = (type?: string | null): string => {
+    const t = (type || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    if (t.includes('rouge')) return 'rouge';
+    if (t.includes('blanc')) return 'blanc';
+    if (t.includes('ros')) return 'rose';
+    if (t.includes('champagne') || t.includes('cremant')) return 'champagne';
+    if (t.includes('mousseux') || t.includes('effervescent')) return 'mousseux';
+    if (t.includes('petillant')) return 'petillant';
+    if (t.includes('moelleux') || t.includes('liquoreux')) return 'moelleux';
+    if (t.includes('fortifi') || t.includes('porto') || t.includes('xer') || t.includes('made')) return 'fortifie';
+    if (t.includes('spiritueux') || t.includes('whisky') || t.includes('cognac')) return 'spiritueux';
+    return 'autre';
+  };
+
+  // ── Grouper et trier les vins par type ────────────────────────────────────
+
+  const byType = new Map<string, Record<string, any>[]>();
+  for (const key of TYPE_ORDER_CAT) byType.set(key, []);
+  for (const w of allWines) {
+    const k = wineTypeKeyCat(w.type);
+    byType.get(k)!.push(w);
+  }
+  for (const wines of byType.values()) {
+    wines.sort((a, b) => {
+      const va = a.vintage ?? 9999;
+      const vb = b.vintage ?? 9999;
+      if (va !== vb) return vb - va;
+      return (a.name || '').localeCompare(b.name || '', 'fr');
+    });
+  }
+  const orderedTypes = TYPE_ORDER_CAT.filter(k => (byType.get(k)?.length ?? 0) > 0);
+
+  // ── Simuler la pagination pour le sommaire ────────────────────────────────
+  // Layout : 3 colonnes, 4 rangées de cartes par page
+  // Un séparateur de type occupe une rangée entière (grid-column: 1/-1)
+
+  const COLS = 3;
+  const ROWS_PER_PAGE = 4;
+
+  // Estimer le nombre de pages du sommaire (~50 entrées par page)
+  const TOC_ENTRIES_PER_PAGE = 50;
+  const tocPageCount = Math.max(1, Math.ceil(
+    (allWines.length + orderedTypes.length * 2) / TOC_ENTRIES_PER_PAGE
+  ));
+  const contentStartPage = 1 + tocPageCount; // 1 = page de garde
+
+  // Chaque type démarre sur sa propre page — simulation simplifiée
+  const winePageMap = new Map<string, number>();
+  let cPage = contentStartPage;
+
+  for (let i = 0; i < orderedTypes.length; i++) {
+    const typeKey  = orderedTypes[i];
+    const typeWines = byType.get(typeKey) ?? [];
+    let rowsUsed = 1; // 1ère rangée = séparateur
+    let colPos   = 0;
+    for (const w of typeWines) {
+      if (colPos === 0 && rowsUsed >= ROWS_PER_PAGE) { cPage++; rowsUsed = 0; }
+      winePageMap.set(w.id, cPage);
+      colPos++;
+      if (colPos >= COLS) { colPos = 0; rowsUsed++; }
+    }
+    if (i < orderedTypes.length - 1) cPage++; // saut de page avant le type suivant
+  }
+
+  // ── Générateur de carte ───────────────────────────────────────────────────
 
   const catalogCard = (w: Record<string, any>): string => {
     const imgSrc    = photoBase64(w.photoUrl, photosPath);
@@ -755,9 +831,9 @@ function buildHTMLcatalog(
     const vintage   = w.vintage ? String(w.vintage) : (w.nonVintage ? 'NV' : '');
     const appel     = esc(w.appellation || w.region || '');
     const qty       = w.quantity ?? 0;
-    const typeKey   = (w.type || 'autre').toLowerCase();
+    const typeKey   = wineTypeKeyCat(w.type);
     const typeClr   = TYPE_ACCENT_CAT[typeKey] || '#2C3240';
-    const typeLabel = TYPE_LABEL[typeKey] || esc(w.type || '');
+    const typeLabel = TYPE_LABEL_SHORT[typeKey] || esc(w.type || '');
 
     const photoEl = imgSrc
       ? `<img src="${imgSrc}" alt="${name}" />`
@@ -802,7 +878,56 @@ function buildHTMLcatalog(
     </div>`;
   };
 
-  const cards = allWines.map(catalogCard).join('\n');
+  // ── Construire les sections par type (grille indépendante + saut de page) ──
+
+  const sections: string[] = [];
+  for (let i = 0; i < orderedTypes.length; i++) {
+    const typeKey   = orderedTypes[i];
+    const typeWines = byType.get(typeKey) ?? [];
+    const typeClr   = TYPE_ACCENT_CAT[typeKey] || '#2C3240';
+    const typeLabel = TYPE_LABEL_CAT[typeKey] || typeKey;
+    const breakAttr = i > 0 ? ' style="page-break-before:always;break-before:page;"' : '';
+    const sectionCards = typeWines.map(catalogCard).join('\n');
+    sections.push(`
+<div class="cat-section"${breakAttr}>
+  <div class="cat-divider" style="--tc:${typeClr};">
+    <span class="cat-divider-dot" style="background:${typeClr};"></span>
+    <span class="cat-divider-label">${esc(typeLabel)}</span>
+    <span class="cat-divider-count">${typeWines.length} référence${typeWines.length > 1 ? 's' : ''}</span>
+    <div class="cat-divider-rule" style="background:${typeClr};"></div>
+  </div>
+  <div class="cat-grid">
+    ${sectionCards}
+  </div>
+</div>`);
+  }
+  const sectionsHtml = sections.join('\n');
+
+  // ── Construire le sommaire ────────────────────────────────────────────────
+
+  let tocInner = '';
+  for (const typeKey of orderedTypes) {
+    const typeWines = byType.get(typeKey) ?? [];
+    const typeClr   = TYPE_ACCENT_CAT[typeKey] || '#2C3240';
+    const typeLabel = TYPE_LABEL_CAT[typeKey] || typeKey;
+    let entriesHtml = '';
+    for (const w of typeWines) {
+      const pg  = winePageMap.get(w.id) ?? contentStartPage;
+      const n   = esc(trunc(w.name || 'Sans nom', 46));
+      const vin = w.vintage ? ` ${w.vintage}` : '';
+      entriesHtml += `
+      <div class="toc-entry">
+        <span class="toc-name">${n}${vin}</span>
+        <span class="toc-leader"></span>
+        <span class="toc-num">${pg}</span>
+      </div>`;
+    }
+    tocInner += `
+    <div class="toc-block">
+      <div class="toc-type-hd" style="border-color:${typeClr};color:${typeClr};">${esc(typeLabel)}</div>
+      ${entriesHtml}
+    </div>`;
+  }
 
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -828,6 +953,40 @@ function buildHTMLcatalog(
     gap: 8px;
   }
 
+  /* ── Séparateur de section ───────────────────────────── */
+  .cat-divider {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 2px 3px;
+    break-inside: avoid;
+    margin-top: 2px;
+  }
+  .cat-divider-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .cat-divider-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #111;
+    flex-shrink: 0;
+  }
+  .cat-divider-count {
+    font-size: 8px;
+    color: #9CA3AF;
+    flex-shrink: 0;
+  }
+  .cat-divider-rule {
+    flex: 1;
+    height: 1px;
+    opacity: 0.22;
+  }
+
   /* ── Carte ───────────────────────────────────────────── */
   .cat-card {
     background: #fff;
@@ -837,10 +996,10 @@ function buildHTMLcatalog(
     break-inside: avoid;
   }
 
-  /* Zone photo */
+  /* Zone photo — hauteur réduite pour tenir 4 rangées par page */
   .cat-photo {
     width: 100%;
-    height: 165px;
+    height: 130px;
     background: #ffffff;
     display: flex;
     align-items: center;
@@ -850,13 +1009,13 @@ function buildHTMLcatalog(
     border-bottom: 1px solid #F3F4F6;
   }
   .cat-photo img {
-    max-height: 158px;
+    max-height: 124px;
     max-width: 86%;
     object-fit: contain;
     display: block;
   }
   .cat-placeholder {
-    font-size: 30px;
+    font-size: 26px;
     color: #D1D5DB;
   }
   .cat-qty {
@@ -873,7 +1032,7 @@ function buildHTMLcatalog(
   }
 
   /* Zone info */
-  .cat-info { padding: 7px 8px 8px; }
+  .cat-info { padding: 6px 8px 7px; }
   .cat-name {
     font-weight: 700;
     font-size: 10.5px;
@@ -898,7 +1057,7 @@ function buildHTMLcatalog(
     display: flex;
     align-items: flex-end;
     justify-content: space-between;
-    margin-top: 5px;
+    margin-top: 4px;
     gap: 4px;
     min-height: 0;
   }
@@ -910,16 +1069,79 @@ function buildHTMLcatalog(
   .cat-rack {
     flex-shrink: 0;
     line-height: 0;
-    max-height: 46px;
-    max-width: 66px;
+    max-height: 42px;
+    max-width: 62px;
     overflow: hidden;
   }
   .cat-rack svg {
-    max-height: 46px !important;
-    max-width: 66px !important;
+    max-height: 42px !important;
+    max-width: 62px !important;
     height: auto !important;
     width:  auto !important;
     display: block;
+  }
+
+  /* ══ SOMMAIRE ═══════════════════════════════════════════ */
+  .toc-wrapper {
+    page-break-after: always;
+  }
+  .toc-title {
+    font-family: 'Liberation Serif', Georgia, serif;
+    font-size: 20px;
+    font-weight: 400;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: #1A1410;
+    text-align: center;
+    padding: 8mm 0 4mm;
+    border-bottom: 1px solid #E5E7EB;
+    margin-bottom: 7mm;
+  }
+  .toc-columns {
+    columns: 2;
+    column-gap: 10mm;
+  }
+  .toc-block {
+    break-inside: avoid;
+    margin-bottom: 5mm;
+  }
+  .toc-type-hd {
+    font-size: 8.5px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    border-left: 3px solid;
+    padding: 1px 0 1px 6px;
+    margin-bottom: 3px;
+  }
+  .toc-entry {
+    display: flex;
+    align-items: baseline;
+    padding: 1px 0;
+  }
+  .toc-name {
+    font-size: 8px;
+    color: #374151;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-shrink: 1;
+    max-width: 70%;
+  }
+  .toc-leader {
+    flex: 1;
+    border-bottom: 1px dotted #D1D5DB;
+    margin: 0 3px 3px;
+    flex-shrink: 1;
+    min-width: 6px;
+  }
+  .toc-num {
+    font-size: 8px;
+    color: #6B7280;
+    font-family: 'Liberation Mono', 'Courier New', monospace;
+    flex-shrink: 0;
+    min-width: 14px;
+    text-align: right;
   }
 
   /* ══ PAGE DE GARDE ══════════════════════════════════════ */
@@ -995,7 +1217,9 @@ function buildHTMLcatalog(
 
   @media print {
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    .cat-card { page-break-inside: avoid; break-inside: avoid; }
+    .cat-card    { page-break-inside: avoid; break-inside: avoid; }
+    .cat-divider { page-break-inside: avoid; break-inside: avoid; }
+    .toc-block   { page-break-inside: avoid; break-inside: avoid; }
   }
 </style>
 </head>
@@ -1025,10 +1249,16 @@ function buildHTMLcatalog(
   <div class="cover-bottom-rule"></div>
 </div>
 
-<!-- ── Grille des cartes ─────────────────────────────────────── -->
-<div class="cat-grid">
-${cards}
+<!-- ── Sommaire ──────────────────────────────────────────────── -->
+<div class="toc-wrapper">
+  <div class="toc-title">Sommaire</div>
+  <div class="toc-columns">
+    ${tocInner}
+  </div>
 </div>
+
+<!-- ── Sections par type ─────────────────────────────────────── -->
+${sectionsHtml}
 
 <div class="doc-footer">
   <span>${esc(title)}</span>
