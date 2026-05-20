@@ -123,9 +123,12 @@ export function SlotPicker({
 
   // ── Mode normal : clic dans n'importe quelle grille ──────────────────────────
   const handleNormalSlotClick = (slot: GridSlot, locationId: string) => {
-    if (slot.slot.isBlocked || slot.wine) return;
+    if (slot.slot.isBlocked) return;
     const slotId = slot.slot.id;
     const isDeselecting = selectedSlots.includes(slotId);
+    // Autoriser le clic sur un slot occupé uniquement pour désélectionner
+    // ses propres cases (sinon on ne peut jamais déplacer une bouteille)
+    if (slot.wine && !isDeselecting) return;
     if (!isDeselecting && maxSlots !== undefined && selectedSlots.length >= maxSlots) return;
     const newSelection = isDeselecting
       ? selectedSlots.filter((s) => s !== slotId)
