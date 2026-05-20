@@ -733,6 +733,8 @@ function buildHTMLcatalog(
   gridsByLocation: Map<string, LocationGridData>,
 ): string {
   const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+  const year  = new Date().getFullYear();
+  const totalBottles = allWines.reduce((s, w) => s + (w.quantity ?? 1), 0);
 
   const TYPE_ACCENT_CAT: Record<string, string> = {
     rouge: '#7B1A1A', blanc: '#A07820', rose: '#A8174E',
@@ -818,40 +820,6 @@ function buildHTMLcatalog(
   }
 
   @page { size: A4; margin: 11mm 11mm 13mm 11mm; }
-
-  /* ── En-tête ─────────────────────────────────────────── */
-  .doc-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    padding-bottom: 6px;
-    margin-bottom: 12px;
-    border-bottom: 1px solid #111;
-  }
-  .doc-header-left { display: flex; flex-direction: column; gap: 1px; }
-  .doc-title {
-    font-family: 'Liberation Serif', Georgia, serif;
-    font-size: 20px;
-    font-weight: 400;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    color: #111;
-    line-height: 1;
-  }
-  .doc-tagline {
-    font-size: 7.5px;
-    letter-spacing: 0.25em;
-    text-transform: uppercase;
-    color: #9CA3AF;
-  }
-  .doc-meta {
-    font-size: 7.5px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: #9CA3AF;
-    text-align: right;
-    line-height: 1.7;
-  }
 
   /* ── Grille 3 colonnes ───────────────────────────────── */
   .cat-grid {
@@ -954,6 +922,64 @@ function buildHTMLcatalog(
     display: block;
   }
 
+  /* ══ PAGE DE GARDE ══════════════════════════════════════ */
+  .cover {
+    height: 240mm;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    text-align: center;
+    page-break-after: always;
+  }
+  .cover-top-rule {
+    width: 100%;
+    height: 4px;
+    background: linear-gradient(90deg, transparent, #7B1A1A 20%, #7B1A1A 80%, transparent);
+    margin-top: 20mm;
+  }
+  .cover-body {
+    flex: 1; display: flex; flex-direction: column;
+    justify-content: center; align-items: center;
+    padding: 0 20mm;
+  }
+  .cover-subtitle-top {
+    font-size: 9px; letter-spacing: 0.35em;
+    text-transform: uppercase; color: #A89E94; margin-bottom: 14px;
+  }
+  .cover-title {
+    font-family: 'Liberation Serif', Georgia, 'Times New Roman', serif;
+    font-size: 36px; font-weight: 400;
+    letter-spacing: 0.2em; text-transform: uppercase;
+    color: #1A1410; line-height: 1.2; margin-bottom: 18px;
+  }
+  .cover-rule { width: 60px; height: 1px; background: #C4993A; margin: 0 auto 16px; }
+  .cover-tagline {
+    font-size: 11px; letter-spacing: 0.25em;
+    text-transform: uppercase; color: #7A6F64; margin-bottom: 32px;
+  }
+  .cover-stats { display: flex; align-items: center; gap: 16px; margin-bottom: 28px; }
+  .cover-stat  { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .stat-value  {
+    font-family: 'Liberation Serif', Georgia, serif;
+    font-size: 22px; color: #1A1410; font-weight: 400;
+  }
+  .stat-label  {
+    font-size: 8px; letter-spacing: 0.15em;
+    text-transform: uppercase; color: #A89E94;
+  }
+  .cover-sep   { font-size: 18px; color: #DDD7CE; margin-top: -4px; }
+  .cover-date  {
+    font-size: 9px; letter-spacing: 0.15em;
+    color: #A89E94; text-transform: uppercase;
+  }
+  .cover-bottom-rule {
+    width: 100%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #DDD7CE 20%, #DDD7CE 80%, transparent);
+    margin-bottom: 14mm;
+  }
+
   /* ── Pied de page ────────────────────────────────────── */
   .doc-footer {
     margin-top: 12px;
@@ -975,24 +1001,38 @@ function buildHTMLcatalog(
 </head>
 <body>
 
-<div class="doc-header">
-  <div class="doc-header-left">
-    <div class="doc-title">${esc(title)}</div>
-    <div class="doc-tagline">Catalogue des vins</div>
+<!-- ── Page de garde ─────────────────────────────────────────── -->
+<div class="cover">
+  <div class="cover-top-rule"></div>
+  <div class="cover-body">
+    <div class="cover-subtitle-top">Collection Personnelle</div>
+    <div class="cover-title">${esc(title)}</div>
+    <div class="cover-rule"></div>
+    <div class="cover-tagline">Catalogue des Vins</div>
+    <div class="cover-stats">
+      <div class="cover-stat">
+        <span class="stat-value">${totalBottles}</span>
+        <span class="stat-label">bouteille${totalBottles > 1 ? 's' : ''}</span>
+      </div>
+      <div class="cover-sep">·</div>
+      <div class="cover-stat">
+        <span class="stat-value">${allWines.length}</span>
+        <span class="stat-label">référence${allWines.length > 1 ? 's' : ''}</span>
+      </div>
+    </div>
+    <div class="cover-date">${today}</div>
   </div>
-  <div class="doc-meta">
-    ${allWines.length} référence${allWines.length > 1 ? 's' : ''}<br>
-    ${today}
-  </div>
+  <div class="cover-bottom-rule"></div>
 </div>
 
+<!-- ── Grille des cartes ─────────────────────────────────────── -->
 <div class="cat-grid">
 ${cards}
 </div>
 
 <div class="doc-footer">
   <span>${esc(title)}</span>
-  <span>${new Date().getFullYear()}</span>
+  <span>Catalogue des Vins · ${year}</span>
 </div>
 
 </body>
