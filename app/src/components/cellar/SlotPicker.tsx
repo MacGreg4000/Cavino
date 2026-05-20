@@ -134,12 +134,15 @@ export function SlotPicker({
     if (isDeselecting) {
       // Désélectionner cette case
       newSelection = selectedSlots.filter((s) => s !== slotId);
-    } else if (maxSlots !== undefined && selectedSlots.length >= maxSlots) {
-      // maxSlots atteint → remplacer toute la sélection par cette nouvelle case
-      // (comportement "déplacer" : clic direct sans devoir d'abord désélectionner)
+    } else if (maxSlots === 1 && selectedSlots.length >= 1) {
+      // Vin à 1 bouteille : clic direct sur une case vide = déplacement en 1 clic
       newSelection = [slotId];
-    } else {
+    } else if (maxSlots === undefined || selectedSlots.length < maxSlots) {
+      // Vin multi-bouteilles : ajouter la case (l'utilisateur désélectionne d'abord l'ancienne)
       newSelection = [...selectedSlots, slotId];
+    } else {
+      // maxSlots atteint et multi-bouteilles → ignorer (l'utilisateur doit d'abord libérer une case)
+      return;
     }
     onSelect(newSelection, locationId);
   };
@@ -218,13 +221,19 @@ export function SlotPicker({
   return (
     <div className="space-y-4">
       <p className="text-xs text-text-secondary leading-relaxed">
-        Touchez une case vide pour la sélectionner{' '}
-        <strong className="text-gold">(cadre doré)</strong>.{' '}
-        {selectedSlots.length > 0 && (
-          <span className="text-text-muted">Cliquez une nouvelle case pour déplacer directement.</span>
-        )}
-        {remaining !== null && remaining > 0 && selectedSlots.length === 0 && (
-          <span className="text-text-muted"> — {remaining} case{remaining !== 1 ? 's' : ''} à choisir</span>
+        {maxSlots === 1 ? (
+          <>
+            Touchez une case vide pour <strong className="text-text">déplacer directement</strong> la bouteille{' '}
+            <strong className="text-gold">(cadre doré)</strong>.
+          </>
+        ) : (
+          <>
+            Touchez une case <strong className="text-gold">dorée</strong> pour la désélectionner,
+            puis une case vide pour la remplacer.{' '}
+            {remaining !== null && remaining > 0 && (
+              <span className="text-text-muted">{remaining} case{remaining !== 1 ? 's' : ''} encore à choisir.</span>
+            )}
+          </>
         )}
       </p>
 
