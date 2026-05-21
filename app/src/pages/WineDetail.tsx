@@ -221,7 +221,29 @@ function ShelfMinimap({ wine }: { wine: Wine }) {
     ).then((results) => setGrids(results.filter(Boolean) as GridEntry[]));
   }, [locations, wine.slotIds, fetchGrid]);
 
-  if (!wine.slotIds?.length || grids.length === 0) return null;
+  if (!wine.slotIds?.length) return null;
+
+  // Orphaned slots: wine has slotIds but none found in any current grid
+  if (grids.length === 0) {
+    return (
+      <Card>
+        <div className="flex items-center gap-2 mb-3">
+          <MapPin size={16} className="text-accent-bright" />
+          <h3 className="text-sm font-semibold">Emplacement</h3>
+        </div>
+        <div className="flex flex-wrap gap-1">
+          {wine.slotIds.map((slotId) => (
+            <span key={slotId} className="px-2 py-1 bg-surface-hover rounded-[var(--radius-sm)] font-mono text-[11px] text-gold">
+              {slotId}
+            </span>
+          ))}
+        </div>
+        <p className="text-xs text-text-muted mt-2">
+          Ces cases ne correspondent à aucun casier actuel. Mettez à jour l'emplacement de la bouteille.
+        </p>
+      </Card>
+    );
+  }
 
   return (
     <Card>

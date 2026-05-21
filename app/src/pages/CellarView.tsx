@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { MapPin, Plus, Settings, ArrowRightLeft } from 'lucide-react';
+import { MapPin, Plus, Settings, ArrowRightLeft, Trash2, AlertTriangle } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -9,6 +9,7 @@ import { BottomSheet } from '../components/ui/BottomSheet';
 import { EmptyState } from '../components/ui/EmptyState';
 import { CellarGrid } from '../components/cellar/CellarGrid';
 import { useLocationStore, type Location, type GridSlot } from '../stores/location';
+import { useToast } from '../components/ui/Toast';
 
 function LocationCard({ location }: { location: Location }) {
   const config = location.gridConfig;
@@ -39,10 +40,14 @@ function LocationCard({ location }: { location: Location }) {
 
 // Detail view for a single location's grid
 function LocationGrid({ locationId }: { locationId: string }) {
-  const { fetchGrid } = useLocationStore();
+  const { fetchGrid, deleteLocation } = useLocationStore();
   const [data, setData] = useState<{ location: Location; slots: GridSlot[] } | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<GridSlot | null>(null);
+  const [showDelete, setShowDelete] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const navigate = useNavigate();
+  const { toast } = useToast();
 
   useEffect(() => {
     fetchGrid(locationId).then(setData);
@@ -53,6 +58,25 @@ function LocationGrid({ locationId }: { locationId: string }) {
   const occupiedCount = data.slots.filter((s) => s.wine).length;
   const totalSlots = data.slots.filter((s) => !s.slot.isBlocked).length;
 
+  const handleDelete = async () => {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteLocation(locationId);
+      toast('success', `${data.location.name} supprimé`);
+      navigate('/cellar');
+    } catch (err: unknown) {
+      const e = err as { status?: number; data?: { message?: string } };
+      if (e.status === 409) {
+        setDeleteError(e.data?.message || 'Ce casier contient des bouteilles. Déplacez-les avant de supprimer.');
+      } else {
+        setDeleteError('Erreur lors de la suppression.');
+      }
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div>
       <PageHeader
@@ -60,9 +84,18 @@ function LocationGrid({ locationId }: { locationId: string }) {
         subtitle={`${occupiedCount}/${totalSlots} occupés`}
         back
         action={
-          <Link to={`/cellar/${locationId}/edit`} className="p-2 text-text-secondary hover:text-text">
-            <Settings size={18} />
-          </Link>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => { setShowDelete(true); setDeleteError(null); }}
+              className="p-2 text-text-secondary hover:text-danger transition-colors"
+              title="Supprimer le casier"
+            >
+              <Trash2 size={18} />
+            </button>
+            <Link to={`/cellar/${locationId}/edit`} className="p-2 text-text-secondary hover:text-text">
+              <Settings size={18} />
+            </Link>
+          </div>
         }
       />
 
@@ -142,6 +175,50 @@ function LocationGrid({ locationId }: { locationId: string }) {
             </p>
           </div>
         )}
+      </BottomSheet>
+
+      {/* Delete confirmation bottom sheet */}
+      <BottomSheet
+        open={showDelete}
+        onClose={() => { setShowDelete(false); setDeleteError(null); }}
+        title="Supprimer le casier"
+      >
+        <div className="space-y-4">
+          {deleteError ? (
+            <div className="flex items-start gap-2.5 bg-danger/10 border border-danger/30 rounded-[var(--radius-md)] px-3 py-3">
+              <AlertTriangle size={16} className="text-danger flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-danger">{deleteError}</p>
+            </div>
+          ) : (
+            <div className="flex items-start gap-2.5 bg-warning/10 border border-warning/30 rounded-[var(--radius-md)] px-3 py-3">
+              <AlertTriangle size={16} className="text-warning flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-warning">Action irréversible</p>
+                <p className="text-xs text-text-secondary mt-0.5">
+                  Le casier <span className="font-semibold">{data.location.name}</span> et toutes ses cases vides seront supprimés définitivement.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {!deleteError && (
+            <Button
+              variant="danger"
+              className="w-full"
+              loading={deleting}
+              onClick={handleDelete}
+            >
+              <Trash2 size={16} /> Supprimer définitivement
+            </Button>
+          )}
+          <Button
+            variant="secondary"
+            className="w-full"
+            onClick={() => { setShowDelete(false); setDeleteError(null); }}
+          >
+            Annuler
+          </Button>
+        </div>
       </BottomSheet>
     </div>
   );
