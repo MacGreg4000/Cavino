@@ -100,7 +100,7 @@ interface WineState {
   createWine: (data: Partial<Wine>) => Promise<Wine>;
   validateWine: (id: string, data: { quantity: number; slotIds?: string[]; locationId?: string; purchasePrice?: number }) => Promise<void>;
   updateWine: (id: string, data: Partial<Pick<Wine, 'slotIds' | 'locationId' | 'quantity' | 'bottleSize' | 'personalComment' | 'tastingNotes' | 'personalRating' | 'isFavorite' | 'name'>>) => Promise<Wine>;
-  drinkWine: (id: string) => Promise<void>;
+  drinkWine: (id: string, slotId?: string) => Promise<void>;
   deleteWine: (id: string) => Promise<void>;
 
   // Scan queue actions
@@ -235,8 +235,11 @@ export const useWineStore = create<WineState>((set, get) => ({
     return updated;
   },
 
-  drinkWine: async (id) => {
-    const res = await apiFetch(`${API}/wines/${id}/drink`, { method: 'POST' });
+  drinkWine: async (id, slotId) => {
+    const res = await apiFetch(`${API}/wines/${id}/drink`, {
+      method: 'POST',
+      body: slotId ? JSON.stringify({ slotId }) : undefined,
+    });
     if (!res.ok) throw new Error('Drink failed');
     const updated = await res.json();
     set((s) => ({

@@ -613,8 +613,10 @@ export function WineDetail() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { wines, pending, drinkWine, deleteWine, updateWine } = useWineStore();
+  const { locations, fetchLocations } = useLocationStore();
   const [wine, setWine] = useState<Wine | null>(null);
   const [showDrink, setShowDrink] = useState(false);
+  const [drinkSlotId, setDrinkSlotId] = useState<string | null>(null);
   const [showDelete, setShowDelete] = useState(false);
   const [showPhoto, setShowPhoto] = useState(false);
   const [showSlotPicker, setShowSlotPicker] = useState(false);
@@ -627,6 +629,8 @@ export function WineDetail() {
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
   const [selectedLocationId, setSelectedLocationId] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { fetchLocations(); }, [fetchLocations]);
 
   useEffect(() => {
     const found = [...wines, ...pending].find((w) => w.id === id);
@@ -692,10 +696,16 @@ export function WineDetail() {
     }
   };
 
+  const handleOpenDrink = () => {
+    // Pré-sélectionner le seul slot si la bouteille n'est qu'à un endroit
+    setDrinkSlotId(wine.slotIds?.length === 1 ? wine.slotIds[0] : null);
+    setShowDrink(true);
+  };
+
   const handleDrink = async () => {
     setLoading(true);
     try {
-      await drinkWine(wine.id);
+      await drinkWine(wine.id, drinkSlotId ?? undefined);
       toast('success', `${wine.name} débouchée !`);
       setShowDrink(false);
       if ((wine.quantity || 1) <= 1) navigate('/cave');
@@ -938,7 +948,7 @@ export function WineDetail() {
 
         {/* Actions */}
         <div className="flex gap-3 pt-2">
-          <Button variant="primary" className="flex-1" onClick={() => setShowDrink(true)}>
+          <Button variant="primary" className="flex-1" onClick={handleOpenDrink}>
             Déboucher
           </Button>
           <Button variant="ghost" onClick={() => navigate(`/cave/${wine.id}/edit`)}>
@@ -962,13 +972,65 @@ export function WineDetail() {
       </BottomSheet>
 
       {/* Drink confirmation */}
-      <BottomSheet open={showDrink} onClose={() => setShowDrink(false)} title="Déboucher cette bouteille ?">
+      <BottomSheet open={showDrink} onClose={() => setShowDrink(false)} title="Déboucher une bouteille">
         <p className="text-sm text-text-secondary mb-4">
           {wine.name} {wine.vintage && `(${wine.vintage})`} — il vous en restera {Math.max(0, (wine.quantity || 1) - 1)}.
         </p>
+
+        {/* Sélecteur de slot — affiché seulement si plusieurs emplacements */}
+        {wine.slotIds && wine.slotIds.length > 1 && (
+          <div className="mb-4 space-y-2">
+            <p className="text-xs font-semibold text-text-secondary">
+              Quelle bouteille débouchez-vous ?
+            </p>
+            <div className="flex flex-col gap-2">
+              {wine.slotIds.map((slotId) => {
+                const loc = locations.find((l) =>
+                  slotId.startsWith(l.name.substring(0, 2).toUpperCase() + '-')
+                );
+                const isSelected = drinkSlotId === slotId;
+                return (
+                  <button
+                    key={slotId}
+                    onClick={() => setDrinkSlotId(isSelected ? null : slotId)}
+                    className={`flex items-center gap-3 rounded-[var(--radius-md)] border px-3 py-2.5 text-left transition-colors ${
+                      isSelected
+                        ? 'border-accent bg-accent/10'
+                        : 'border-border bg-surface hover:bg-surface-hover'
+                    }`}
+                  >
+                    <span
+                      className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                      style={{ background: loc?.color ?? '#8B1A1A' }}
+                    />
+                    <span className="text-xs text-text-secondary flex-1">
+                      {loc?.name ?? 'Emplacement'}
+                    </span>
+                    <span className={`font-mono text-sm font-semibold ${isSelected ? 'text-accent-bright' : 'text-text'}`}>
+                      {slotLabel(slotId)}
+                    </span>
+                    {isSelected && <Check size={14} className="text-accent-bright flex-shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+            {!drinkSlotId && (
+              <p className="text-[11px] text-text-muted">Sélectionnez la case pour libérer l'emplacement dans la grille.</p>
+            )}
+          </div>
+        )}
+
         <div className="flex gap-3">
           <Button variant="ghost" className="flex-1" onClick={() => setShowDrink(false)}>Annuler</Button>
-          <Button variant="primary" className="flex-1" loading={loading} onClick={handleDrink}>Confirmer</Button>
+          <Button
+            variant="primary"
+            className="flex-1"
+            loading={loading}
+            disabled={wine.slotIds && wine.slotIds.length > 1 && !drinkSlotId}
+            onClick={handleDrink}
+          >
+            Confirmer
+          </Button>
         </div>
       </BottomSheet>
 

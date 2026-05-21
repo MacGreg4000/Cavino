@@ -286,22 +286,38 @@ export async function wineRoutes(app: FastifyInstance) {
   });
 
   // POST /api/wines/:id/drink — Déboucher
+  // Body optionnel : { slotId?: string }  — identifiant du slot précis à libérer
   app.post('/api/wines/:id/drink', async (req, reply) => {
     const { id } = req.params as { id: string };
+    const body = (req.body || {}) as { slotId?: string };
+    const requestedSlot = body.slotId ?? null;
+
     const [wine] = await db.select().from(wines).where(eq(wines.id, id));
     if (!wine) return reply.status(404).send({ error: 'Wine not found' });
 
     const newQuantity = Math.max(0, (wine.quantity || 1) - 1);
 
-    // Libérer un slot si assigné
+    // Déterminer quel slot libérer :
+    // 1. Celui demandé explicitement par le client (requestedSlot)
+    // 2. Sinon le dernier de la liste (comportement historique)
+    let slotToFree: string | null = null;
     if (wine.slotIds && wine.slotIds.length > 0) {
-      const slotToFree = wine.slotIds[wine.slotIds.length - 1];
+      if (requestedSlot && wine.slotIds.includes(requestedSlot)) {
+        slotToFree = requestedSlot;
+      } else {
+        slotToFree = wine.slotIds[wine.slotIds.length - 1];
+      }
+    }
+
+    if (slotToFree) {
       await db.update(gridSlots)
         .set({ wineId: null })
         .where(eq(gridSlots.id, slotToFree));
     }
 
-    const newSlotIds = wine.slotIds?.slice(0, -1) || [];
+    const newSlotIds = slotToFree
+      ? (wine.slotIds ?? []).filter((s) => s !== slotToFree)
+      : wine.slotIds?.slice(0, -1) ?? [];
 
     const [updated] = await db.update(wines)
       .set({
