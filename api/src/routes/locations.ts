@@ -160,6 +160,32 @@ export async function locationRoutes(app: FastifyInstance) {
     return updated;
   });
 
+  // DELETE /api/locations/:id
+  app.delete('/api/locations/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+
+    // Bloquer si des bouteilles sont encore placées dans ce rack
+    const [{ occupiedCount }] = await db
+      .select({ occupiedCount: count() })
+      .from(gridSlots)
+      .where(and(eq(gridSlots.locationId, id), sql`${gridSlots.wineId} IS NOT NULL`));
+
+    if (occupiedCount > 0) {
+      return reply.status(409).send({
+        error: 'rack_occupied',
+        message: `Ce rack contient ${occupiedCount} bouteille${occupiedCount > 1 ? 's' : ''} placée${occupiedCount > 1 ? 's' : ''}. Déplacez-les avant de supprimer.`,
+        occupiedCount,
+      });
+    }
+
+    // Supprimer tous les slots libres, puis l'emplacement
+    await db.delete(gridSlots).where(eq(gridSlots.locationId, id));
+    const [deleted] = await db.delete(locations).where(eq(locations.id, id)).returning({ id: locations.id });
+
+    if (!deleted) return reply.status(404).send({ error: 'Location not found' });
+    return { success: true };
+  });
+
   // GET /api/locations/:id/grid — État de la grille avec vins
   app.get('/api/locations/:id/grid', async (req, reply) => {
     const { id } = req.params as { id: string };

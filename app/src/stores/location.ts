@@ -48,6 +48,7 @@ interface LocationState {
   fetchGrid: (id: string) => Promise<{ location: Location; slots: GridSlot[] }>;
   createLocation: (data: { name: string; type: string; color?: string; gridConfig: GridConfig }) => Promise<Location>;
   updateLocation: (id: string, data: { name?: string; type?: string; color?: string; gridConfig?: GridConfig }) => Promise<Location>;
+  deleteLocation: (id: string) => Promise<void>;
 }
 
 const API = '/api';
@@ -101,5 +102,14 @@ export const useLocationStore = create<LocationState>((set) => ({
       locations: s.locations.map((l) => l.id === id ? location : l),
     }));
     return location;
+  },
+
+  deleteLocation: async (id) => {
+    const res = await apiFetch(`${API}/locations/${id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw Object.assign(new Error(err.message || 'Delete failed'), { status: res.status, data: err });
+    }
+    set((s) => ({ locations: s.locations.filter((l) => l.id !== id) }));
   },
 }));
