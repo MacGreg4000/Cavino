@@ -1,11 +1,12 @@
-FROM node:22-alpine AS builder
+FROM node:22-slim AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
 ARG VITE_PUBLIC_BASE_URL
 ENV VITE_PUBLIC_BASE_URL=$VITE_PUBLIC_BASE_URL
-RUN npm run build
+RUN npx tsc -b
+RUN npx vite build
 
 FROM nginx:alpine
 COPY --from=builder /app/dist /usr/share/nginx/html
