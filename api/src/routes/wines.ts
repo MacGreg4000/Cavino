@@ -174,6 +174,12 @@ export async function wineRoutes(app: FastifyInstance) {
 
     const updates: Record<string, unknown> = { ...body, updatedAt: new Date() };
 
+    // Si on remet une quantité > 0 sur une bouteille consommée → la remettre en cave
+    if (body.quantity !== undefined && body.quantity > 0) {
+      const [current] = await db.select({ importStatus: wines.importStatus }).from(wines).where(eq(wines.id, id));
+      if (current?.importStatus === 'consumed') updates.importStatus = 'available';
+    }
+
     // Convert numeric fields to strings for Drizzle numeric columns
     const numericField = (key: string) => {
       if (updates[key] !== undefined && updates[key] !== null)
