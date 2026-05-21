@@ -196,23 +196,26 @@ function ShelfMinimap({ wine }: { wine: Wine }) {
   useEffect(() => {
     if (!locations.length || !wine.slotIds?.length) return;
 
-    // Associer chaque slotId à un emplacement via son préfixe (2 premiers caractères du nom)
-    const matchingLocations = locations.filter((loc) => {
-      const prefix = loc.name.substring(0, 2).toUpperCase();
-      return wine.slotIds!.some((id) => id.startsWith(prefix + '-'));
-    });
+    const wineSlotSet = new Set(wine.slotIds);
 
-    if (!matchingLocations.length) return;
-
+    // Fetcher toutes les grilles et vérifier directement quels slots y appartiennent
+    // (évite la heuristique par préfixe de nom qui échoue avec les IDs UUID)
     Promise.all(
-      matchingLocations.map(async (loc) => {
-        const prefix = loc.name.substring(0, 2).toUpperCase();
-        const locSlots = new Set(wine.slotIds!.filter((id) => id.startsWith(prefix + '-')));
+      locations.map(async (loc) => {
         try {
           const data = await fetchGrid(loc.id);
           const config = data.location.gridConfig;
-          if (!config || locSlots.size === 0) return null;
-          return { locationName: loc.name, rows: config.rows, cols: config.cols, slots: data.slots, wineSlotIds: locSlots } satisfies GridEntry;
+          if (!config) return null;
+
+          // Quels slots du vin sont physiquement dans cette grille ?
+          const locWineSlots = new Set(
+            data.slots
+              .filter((s) => wineSlotSet.has(s.slot.id))
+              .map((s) => s.slot.id)
+          );
+          if (locWineSlots.size === 0) return null;
+
+          return { locationName: loc.name, rows: config.rows, cols: config.cols, slots: data.slots, wineSlotIds: locWineSlots } satisfies GridEntry;
         } catch { return null; }
       })
     ).then((results) => setGrids(results.filter(Boolean) as GridEntry[]));
@@ -986,6 +989,7 @@ export function WineDetail() {
             <div className="flex flex-col gap-2">
               {wine.slotIds.map((slotId) => {
                 const loc = locations.find((l) =>
+                  slotId.startsWith(l.id.substring(0, 8).toUpperCase() + '-') ||
                   slotId.startsWith(l.name.substring(0, 2).toUpperCase() + '-')
                 );
                 const isSelected = drinkSlotId === slotId;
