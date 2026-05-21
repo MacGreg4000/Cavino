@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { eq, and, isNull, sql } from 'drizzle-orm';
+import { eq, and, isNull, sql, count } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { locations, gridSlots, wines } from '../db/schema.js';
 import { z } from 'zod';
@@ -87,8 +87,21 @@ export async function locationRoutes(app: FastifyInstance) {
 
     if (!updated) return reply.status(404).send({ error: 'Location not found' });
 
-    // Si gridConfig a changé, régénérer les slots
+    // Si gridConfig a changé, vérifier qu'aucune bouteille n'est placée
     if (body.gridConfig) {
+      const [{ occupiedCount }] = await db
+        .select({ occupiedCount: count() })
+        .from(gridSlots)
+        .where(and(eq(gridSlots.locationId, id), sql`${gridSlots.wineId} IS NOT NULL`));
+
+      if (occupiedCount > 0) {
+        return reply.status(409).send({
+          error: 'rack_occupied',
+          message: `Ce rack contient ${occupiedCount} bouteille${occupiedCount > 1 ? 's' : ''} placée${occupiedCount > 1 ? 's' : ''}. Déplacez-les avant de modifier la grille.`,
+          occupiedCount,
+        });
+      }
+
       const { rows, cols, labelRows, labelCols, blockedSlots = [] } = body.gridConfig;
       // Préfixe basé sur l'UUID de l'emplacement — jamais de collision entre racks
       const prefix = id.substring(0, 8).toUpperCase();

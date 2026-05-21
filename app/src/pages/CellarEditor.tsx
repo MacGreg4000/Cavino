@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Save, RotateCcw, Lock, Unlock } from 'lucide-react';
+import { Save, RotateCcw, Lock, Unlock, AlertTriangle } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
@@ -9,6 +9,7 @@ import { Stepper } from '../components/ui/Stepper';
 import { Button } from '../components/ui/Button';
 import { useToast } from '../components/ui/Toast';
 import { useLocationStore } from '../stores/location';
+import { apiFetch } from '../lib/api';
 
 function generateLabels(count: number, type: 'alpha' | 'numeric'): string[] {
   if (type === 'alpha') {
@@ -43,6 +44,7 @@ export function CellarEditor() {
   const [blockedSlots, setBlockedSlots] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  const [occupiedCount, setOccupiedCount] = useState(0);
 
   // Charge les données existantes si on est en mode édition
   useEffect(() => {
@@ -62,6 +64,16 @@ export function CellarEditor() {
         }
       })
       .catch(() => setLoadError(true));
+
+    // Vérifier si des bouteilles sont placées dans ce rack
+    apiFetch(`/api/locations/${id}/grid`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (!data) return;
+        const occupied = (data.slots as Array<{ wine: unknown }>).filter((s) => s.wine != null).length;
+        setOccupiedCount(occupied);
+      })
+      .catch(() => {});
   }, [id, isNew, fetchLocation]);
 
   const labelRows = generateLabels(rows, rowLabelType);
@@ -132,6 +144,21 @@ export function CellarEditor() {
       />
 
       <div className="px-4 pt-4 max-w-lg mx-auto space-y-4 pb-8">
+
+        {/* Bandeau d'alerte si bouteilles présentes */}
+        {!isNew && occupiedCount > 0 && (
+          <div className="flex items-start gap-2.5 bg-warning/10 border border-warning/30 rounded-[var(--radius-md)] px-3 py-3">
+            <AlertTriangle size={16} className="text-warning flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-warning">Rack occupé — grille verrouillée</p>
+              <p className="text-xs text-text-secondary mt-0.5">
+                {occupiedCount} bouteille{occupiedCount > 1 ? 's sont placées' : ' est placée'} dans ce rack.
+                Déplacez-les d'abord pour pouvoir modifier les dimensions ou la grille.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Info */}
         <Card>
           <div className="space-y-3">
@@ -160,8 +187,11 @@ export function CellarEditor() {
         </Card>
 
         {/* Dimensions */}
-        <Card>
-          <h3 className="text-sm font-semibold mb-3">Dimensions</h3>
+        <Card className={occupiedCount > 0 ? 'opacity-50 pointer-events-none' : ''}>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold">Dimensions</h3>
+            {occupiedCount > 0 && <Lock size={14} className="text-warning" />}
+          </div>
           <div className="space-y-3">
             <Stepper value={rows} onChange={setRows} min={1} max={26} label="Rangées" />
             <Stepper value={cols} onChange={setCols} min={1} max={26} label="Colonnes" />
@@ -189,7 +219,7 @@ export function CellarEditor() {
         </Card>
 
         {/* Grid preview + block slots */}
-        <Card>
+        <Card className={occupiedCount > 0 ? 'opacity-50 pointer-events-none' : ''}>
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold">
               Grille <span className="text-text-secondary font-normal">({totalActive} slots actifs)</span>
