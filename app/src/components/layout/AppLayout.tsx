@@ -2,7 +2,10 @@ import { useEffect } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Sparkles, X, ChevronRight, CheckCircle } from 'lucide-react';
 import { BottomNav } from './BottomNav';
+import { OfflineBanner } from '../ui/OfflineBanner';
 import { useWineStore } from '../../stores/wine';
+import { useLocationStore } from '../../stores/location';
+import { startSyncListener } from '../../lib/sync';
 import { useWebSocket } from '../../hooks/useWebSocket';
 
 function ScanProgressBanner() {
@@ -81,15 +84,20 @@ function ScanProgressBanner() {
 
 export function AppLayout() {
   useWebSocket();
-  const pendingCount = useWineStore((s) => s.pendingCount);
+  const pendingCount           = useWineStore((s) => s.pendingCount);
   const loadScanQueueFromCache = useWineStore((s) => s.loadScanQueueFromCache);
+  const fetchWines             = useWineStore((s) => s.fetchWines);
+  const fetchLocations         = useLocationStore((s) => s.fetchLocations);
 
-  // Restaure la file d'analyse depuis IndexedDB au démarrage — sinon, fermer
-  // la PWA pendant un scan faisait perdre tout le feedback UI même si le scan
-  // service continuait à tourner en arrière-plan.
   useEffect(() => {
     loadScanQueueFromCache();
   }, [loadScanQueueFromCache]);
+
+  // Démarre le listener online/offline et déclenche la sync automatique
+  useEffect(() => {
+    return startSyncListener([fetchWines, fetchLocations]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="flex-1 flex flex-col">
@@ -97,6 +105,7 @@ export function AppLayout() {
         <Outlet />
       </main>
       <ScanProgressBanner />
+      <OfflineBanner />
       <BottomNav pendingCount={pendingCount} />
     </div>
   );

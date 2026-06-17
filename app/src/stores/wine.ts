@@ -133,10 +133,9 @@ const API = '/api';
 
 // Lazy import offline DB to avoid blocking initial load
 const getOfflineDb = () => import('../lib/db').then((m) => m);
+const getSync    = () => import('../lib/sync').then((m) => m);
 
 // Persiste la scanQueue dans IndexedDB (best-effort, fire-and-forget).
-// Appelé dans chaque mutation du store pour que la queue survive à un
-// refresh de l'app pendant un scan en cours.
 const persistScanQueue = (queue: QueuedScan[]) => {
   getOfflineDb().then(({ cacheScanQueue }) => cacheScanQueue(queue)).catch(() => {});
 };
@@ -222,39 +221,108 @@ export const useWineStore = create<WineState>((set, get) => ({
   },
 
   updateWine: async (id, data) => {
-    const res = await apiFetch(`${API}/wines/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify(data),
-    });
-    if (!res.ok) throw new Error('Update failed');
-    const updated: Wine = await res.json();
+    // Mise à jour optimiste immédiate (online et offline)
     set((s) => ({
-      wines: s.wines.map((w) => (w.id === id ? updated : w)),
-      pending: s.pending.map((w) => (w.id === id ? updated : w)),
+      wines: s.wines.map((w) => (w.id === id ? { ...w, ...data } : w)),
+      pending: s.pending.map((w) => (w.id === id ? { ...w, ...data } : w)),
     }));
-    return updated;
+    try {
+      const res = await apiFetch(`${API}/wines/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error('Update failed');
+      const updated: Wine = await res.json();
+      set((s) => ({
+        wines: s.wines.map((w) => (w.id === id ? updated : w)),
+        pending: s.pending.map((w) => (w.id === id ? updated : w)),
+      }));
+      getOfflineDb().then(({ upsertCachedWine }) => upsertCachedWine(updated)).catch(() => {});
+      return updated;
+    } catch {
+      // Offline : persister localement + mettre en queue
+      const db = await getOfflineDb();
+      const local = await db.offlineDb.wines.get(id);
+      if (local) await db.upsertCachedWine({ ...local, ...data, updatedAt: new Date().toISOString() });
+      const sync = await getSync();
+      await sync.queueOp('PATCH', `${API}/wines/${id}`, data);
+      sync.useOfflineStore.getState().refreshPendingCount();
+      return get().wines.find((w) => w.id === id) as Wine;
+    }
   },
 
   drinkWine: async (id, slotId) => {
-    const res = await apiFetch(`${API}/wines/${id}/drink`, {
-      method: 'POST',
-      body: slotId ? JSON.stringify({ slotId }) : undefined,
-    });
-    if (!res.ok) throw new Error('Drink failed');
-    const updated = await res.json();
-    set((s) => ({
-      wines: s.wines.map((w) => (w.id === id ? updated : w)).filter((w) => w.importStatus !== 'consumed'),
-    }));
+    // Mise à jour optimiste locale
+    const wine = get().wines.find((w) => w.id === id);
+    if (wine) {
+      const newQty = Math.max(0, (wine.quantity ?? 1) - 1);
+      const newSlotIds = slotId
+        ? (wine.slotIds ?? []).filter((s) => s !== slotId)
+        : (wine.slotIds ?? []).slice(0, -1);
+      const optimistic = {
+        ...wine,
+        quantity: newQty,
+        slotIds: newSlotIds,
+        importStatus: (newQty === 0 ? 'consumed' : wine.importStatus) as Wine['importStatus'],
+      };
+      set((s) => ({
+        wines: s.wines.map((w) => (w.id === id ? optimistic : w)).filter((w) => w.importStatus !== 'consumed'),
+      }));
+    }
+    try {
+      const res = await apiFetch(`${API}/wines/${id}/drink`, {
+        method: 'POST',
+        body: slotId ? JSON.stringify({ slotId }) : undefined,
+      });
+      if (!res.ok) throw new Error('Drink failed');
+      const updated = await res.json();
+      set((s) => ({
+        wines: s.wines.map((w) => (w.id === id ? updated : w)).filter((w) => w.importStatus !== 'consumed'),
+      }));
+      if (updated.importStatus !== 'consumed') {
+        getOfflineDb().then(({ upsertCachedWine }) => upsertCachedWine(updated)).catch(() => {});
+      } else {
+        getOfflineDb().then(({ removeCachedWine }) => removeCachedWine(id)).catch(() => {});
+      }
+    } catch {
+      // Offline : persister l'état optimiste + mettre en queue
+      if (wine) {
+        const db = await getOfflineDb();
+        const local = await db.offlineDb.wines.get(id);
+        if (local) {
+          const newQty = Math.max(0, (local.quantity ?? 1) - 1);
+          const newSlotIds = slotId
+            ? (local.slotIds ?? []).filter((s) => s !== slotId)
+            : (local.slotIds ?? []).slice(0, -1);
+          if (newQty === 0) {
+            await db.removeCachedWine(id);
+          } else {
+            await db.upsertCachedWine({ ...local, quantity: newQty, slotIds: newSlotIds });
+          }
+        }
+        const sync = await getSync();
+        await sync.queueOp('POST', `${API}/wines/${id}/drink`, slotId ? { slotId } : undefined);
+        sync.useOfflineStore.getState().refreshPendingCount();
+      }
+    }
   },
 
   deleteWine: async (id) => {
-    const res = await apiFetch(`${API}/wines/${id}`, { method: 'DELETE' });
-    if (!res.ok) throw new Error('Delete failed');
+    // Suppression optimiste immédiate
     set((s) => ({
       wines: s.wines.filter((w) => w.id !== id),
       pending: s.pending.filter((w) => w.id !== id),
       pendingCount: Math.max(0, s.pendingCount - (s.pending.some((w) => w.id === id) ? 1 : 0)),
     }));
+    getOfflineDb().then(({ removeCachedWine }) => removeCachedWine(id)).catch(() => {});
+    try {
+      const res = await apiFetch(`${API}/wines/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Delete failed');
+    } catch {
+      const sync = await getSync();
+      await sync.queueOp('DELETE', `${API}/wines/${id}`);
+      sync.useOfflineStore.getState().refreshPendingCount();
+    }
   },
 
   // ── Scan queue ───────────────────────────────────────────────────────────────

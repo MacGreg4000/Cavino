@@ -47,13 +47,16 @@ interface LocationState {
   fetchLocation: (id: string) => Promise<Location>;
   fetchGrid: (id: string) => Promise<{ location: Location; slots: GridSlot[] }>;
   createLocation: (data: { name: string; type: string; color?: string; gridConfig: GridConfig }) => Promise<Location>;
-  updateLocation: (id: string, data: { name?: string; type?: string; color?: string; gridConfig?: GridConfig }) => Promise<Location>;
+  updateLocation: (id: string, data: { name?: string; type?: Location['type']; color?: string; gridConfig?: GridConfig }) => Promise<Location>;
   deleteLocation: (id: string) => Promise<void>;
 }
 
 const API = '/api';
 
-export const useLocationStore = create<LocationState>((set) => ({
+const getOfflineDb = () => import('../lib/db').then((m) => m);
+const getSync      = () => import('../lib/sync').then((m) => m);
+
+export const useLocationStore = create<LocationState>((set, get) => ({
   locations: [],
   loading: false,
 
@@ -65,20 +68,44 @@ export const useLocationStore = create<LocationState>((set) => ({
       const data = await res.json();
       const locations = Array.isArray(data) ? data : [];
       set({ locations, loading: false });
+      getOfflineDb().then(({ cacheLocations }) => cacheLocations(locations)).catch(() => {});
     } catch {
-      set({ loading: false });
+      // Fallback cache
+      try {
+        const { getCachedLocations } = await getOfflineDb();
+        const locations = await getCachedLocations();
+        set({ locations, loading: false });
+      } catch {
+        set({ loading: false });
+      }
     }
   },
 
   fetchLocation: async (id) => {
-    const res = await apiFetch(`${API}/locations/${id}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
+    try {
+      const res = await apiFetch(`${API}/locations/${id}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    } catch {
+      const loc = get().locations.find((l) => l.id === id);
+      if (loc) return loc;
+      throw new Error('Location non disponible hors ligne');
+    }
   },
 
   fetchGrid: async (id) => {
-    const res = await apiFetch(`${API}/locations/${id}/grid`);
-    return res.json();
+    try {
+      const res = await apiFetch(`${API}/locations/${id}/grid`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      getOfflineDb().then(({ cacheGrid }) => cacheGrid(id, data)).catch(() => {});
+      return data;
+    } catch {
+      const db = await getOfflineDb();
+      const cached = await db.getCachedGrid(id);
+      if (cached) return cached;
+      throw new Error('Grille non disponible hors ligne');
+    }
   },
 
   createLocation: async (data) => {
@@ -86,30 +113,58 @@ export const useLocationStore = create<LocationState>((set) => ({
       method: 'POST',
       body: JSON.stringify(data),
     });
-    const location = await res.json();
+    const location: Location = await res.json();
     set((s) => ({ locations: [...s.locations, location] }));
+    getOfflineDb().then(({ cacheLocations }) => cacheLocations(get().locations)).catch(() => {});
     return location;
   },
 
   updateLocation: async (id, data) => {
-    const res = await apiFetch(`${API}/locations/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify(data),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const location = await res.json();
+    // Optimistic
     set((s) => ({
-      locations: s.locations.map((l) => l.id === id ? location : l),
+      locations: s.locations.map((l) => l.id === id ? { ...l, ...data } : l),
     }));
-    return location;
+    try {
+      const res = await apiFetch(`${API}/locations/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const location = await res.json();
+      set((s) => ({
+        locations: s.locations.map((l) => l.id === id ? location : l),
+      }));
+      getOfflineDb().then(({ cacheLocations }) => cacheLocations(get().locations)).catch(() => {});
+      return location;
+    } catch {
+      const sync = await getSync();
+      await sync.queueOp('PATCH', `${API}/locations/${id}`, data);
+      sync.useOfflineStore.getState().refreshPendingCount();
+      return get().locations.find((l) => l.id === id) as Location;
+    }
   },
 
   deleteLocation: async (id) => {
-    const res = await apiFetch(`${API}/locations/${id}`, { method: 'DELETE' });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw Object.assign(new Error(err.message || 'Delete failed'), { status: res.status, data: err });
-    }
     set((s) => ({ locations: s.locations.filter((l) => l.id !== id) }));
+    try {
+      const res = await apiFetch(`${API}/locations/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        // Rollback si erreur 409 (bouteilles présentes) — pas de queue
+        if (res.status === 409) {
+          // Rollback : restaure la liste depuis le cache
+          const db = await getOfflineDb();
+          const cached = await db.getCachedLocations();
+          set({ locations: cached as Location[] });
+        }
+        const err = await res.json().catch(() => ({}));
+        throw Object.assign(new Error(err.message || 'Delete failed'), { status: res.status, data: err });
+      }
+      getOfflineDb().then(({ cacheLocations }) => cacheLocations(get().locations)).catch(() => {});
+    } catch (e: any) {
+      if (e.status === 409) throw e; // re-throw sans queue
+      const sync = await getSync();
+      await sync.queueOp('DELETE', `${API}/locations/${id}`);
+      sync.useOfflineStore.getState().refreshPendingCount();
+    }
   },
 }));
