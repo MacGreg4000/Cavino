@@ -69,6 +69,12 @@ services:
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3-vl:8b}
       CAVE_BASE_DIR: /data/cave
       SETTLE_DELAY: "3.0"
+      # Qualité d'analyse — baisser MERGE_MAX_HEIGHT et OLLAMA_NUM_CTX si la VRAM sature
+      MERGE_MAX_HEIGHT: ${MERGE_MAX_HEIGHT:-1400}
+      OLLAMA_NUM_CTX: ${OLLAMA_NUM_CTX:-24576}
+      OLLAMA_NUM_PREDICT: ${OLLAMA_NUM_PREDICT:-4096}
+      # 2e passe Ollama enrichie du contexte web (0 = désactivé, scans ~2× plus rapides)
+      WEB_VERIFY: ${WEB_VERIFY:-1}
     volumes:
       - ./data/inbox:/data/cave
     logging:

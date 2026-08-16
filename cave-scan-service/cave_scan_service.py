@@ -38,6 +38,25 @@ SEARXNG_URL  = os.getenv('SEARXNG_URL',  'http://macciolupo.tplinkdns.com:8888')
 CAVE_BASE    = Path(os.getenv('CAVE_BASE_DIR', '/data/cave'))
 SETTLE       = float(os.getenv('SETTLE_DELAY', '3.0'))
 
+# Hauteur max de l'image fusionnée recto/verso envoyée au modèle.
+# Doit rester cohérent avec UPSCALE_MIN_LONG_EDGE : inutile d'upscaler les photos
+# à 1600px pour l'OCR si la fusion les réécrase juste après.
+# Baisser cette valeur si Ollama sature la VRAM (moins de tokens visuels).
+MERGE_MAX_HEIGHT = int(os.getenv('MERGE_MAX_HEIGHT', '1400'))
+
+# Fenêtre de contexte Ollama. Une image plus grande = plus de tokens visuels ;
+# avec le référentiel œnologique (~4k tokens) et un contexte web (~1k), 16384
+# devenait juste. Baisser à 16384 si la VRAM est trop courte.
+OLLAMA_NUM_CTX = int(os.getenv('OLLAMA_NUM_CTX', '24576'))
+
+# Le JSON produit fait ~2500 tokens ; 8192 réservait inutilement de la fenêtre.
+OLLAMA_NUM_PREDICT = int(os.getenv('OLLAMA_NUM_PREDICT', '4096'))
+
+# Vérification web systématique : quand aucun indice utilisateur n'est fourni, on
+# relance une 2e passe Ollama enrichie du contexte web (voir verify_with_web_search).
+# Mettre à 0 pour désactiver (scans ~2× plus rapides, mais moins fiables).
+WEB_VERIFY = os.getenv('WEB_VERIFY', '1') not in ('0', 'false', 'False', '')
+
 SOURCE   = CAVE_BASE / 'A analyser'
 DEST     = CAVE_BASE / 'Prêt à être importé'
 REF      = CAVE_BASE / 'importé'
@@ -379,6 +398,154 @@ def filter_illegal_grapes(appellation: str | None, grapes: list[str]) -> tuple[l
     return kept, rejected
 
 
+# ─── Type de vin : normalisation et cohérence ────────────────────────────────────
+#
+# `identity.type` n'était jusqu'ici jamais validé : la valeur produite par le modèle
+# partait telle quelle jusqu'en base (la colonne est du texte libre côté API). C'est
+# pourtant le champ le plus visible et l'un des plus faciles à halluciner — un modèle
+# de vision confond régulièrement un rouge clair avec un rosé, ou se laisse influencer
+# par la couleur de l'étiquette plutôt que par celle du vin.
+#
+# Deux garde-fous, du plus fiable au moins fiable :
+#   1. l'appellation — déterministe quand elle n'autorise qu'une seule couleur
+#      (un Amarone est rouge, point final) → correction automatique.
+#   2. les cépages — signal ASYMÉTRIQUE : des cépages exclusivement blancs excluent
+#      un rouge, mais des cépages rouges n'excluent PAS un rosé (un rosé de Provence
+#      est fait de Grenache et de Cinsault, qui sont des raisins noirs). On ne
+#      corrige donc que dans ce sens-là.
+
+CANONICAL_TYPES = {
+    'rouge', 'blanc', 'rosé', 'champagne', 'crémant',
+    'moelleux', 'liquoreux', 'effervescent',
+}
+
+# Variantes rencontrées en sortie de modèle (anglais, italien, espagnol, sans
+# accent, casse variable) → valeur canonique française.
+TYPE_ALIASES: dict[str, str] = {
+    'rouge': 'rouge', 'red': 'rouge', 'red wine': 'rouge', 'vin rouge': 'rouge',
+    'tinto': 'rouge', 'rosso': 'rouge', 'rotwein': 'rouge',
+    'blanc': 'blanc', 'white': 'blanc', 'white wine': 'blanc', 'vin blanc': 'blanc',
+    'blanco': 'blanc', 'bianco': 'blanc', 'weisswein': 'blanc',
+    'rosé': 'rosé', 'rose': 'rosé', 'rose wine': 'rosé', 'vin rose': 'rosé',
+    'rosado': 'rosé', 'rosato': 'rosé',
+    'champagne': 'champagne',
+    'crémant': 'crémant', 'cremant': 'crémant',
+    'effervescent': 'effervescent', 'sparkling': 'effervescent',
+    'pétillant': 'effervescent', 'petillant': 'effervescent',
+    'spumante': 'effervescent', 'espumoso': 'effervescent', 'mousseux': 'effervescent',
+    'moelleux': 'moelleux', 'demi-sec': 'moelleux', 'sweet': 'moelleux', 'lieblich': 'moelleux',
+    'liquoreux': 'liquoreux', 'dessert': 'liquoreux', 'dessert wine': 'liquoreux',
+}
+
+_TYPE_ALIASES_FLAT = {_flatten_grape(k): v for k, v in TYPE_ALIASES.items()}
+# Alias les plus longs d'abord : "vin blanc" doit primer sur "blanc", et
+# "champagne" sur un éventuel "blanc de blancs" qui contient "blanc".
+_TYPE_ALIASES_ORDERED = sorted(_TYPE_ALIASES_FLAT.items(), key=lambda kv: -len(kv[0]))
+
+
+def normalize_wine_type(raw) -> Optional[str]:
+    """Ramène une valeur de type libre à l'une des valeurs de CANONICAL_TYPES.
+
+    Retourne None si la valeur est vide ou non reconnue : on ne devine jamais un
+    type absent, on préfère laisser le champ tel quel et signaler.
+    """
+    if not raw or not isinstance(raw, str):
+        return None
+    flat = _flatten_grape(raw)
+    if not flat:
+        return None
+    if flat in _TYPE_ALIASES_FLAT:
+        return _TYPE_ALIASES_FLAT[flat]
+    # Valeurs composées ("vin rouge sec", "red blend", "sparkling rosé")
+    for alias, canon in _TYPE_ALIASES_ORDERED:
+        if re.search(rf'\b{re.escape(alias)}\b', flat):
+            return canon
+    return None
+
+
+# Appellation → types possibles. N'inclure QUE des appellations dont la couleur est
+# réellement contrainte. Les appellations multicolores (Bordeaux générique, Alsace,
+# Rioja, Bandol, Sancerre…) sont volontairement absentes : mieux vaut ne rien
+# corriger que corriger à tort.
+# Un singleton → correction automatique. Un ensemble → simple signalement.
+APPELLATION_TYPES: dict[str, set[str]] = {
+    # Italie — rouges exclusifs
+    'amarone': {'rouge'}, 'ripasso': {'rouge'},
+    'barolo': {'rouge'}, 'barbaresco': {'rouge'}, 'gattinara': {'rouge'},
+    'langhe nebbiolo': {'rouge'}, 'barbera': {'rouge'}, 'dolcetto': {'rouge'},
+    'chianti': {'rouge'}, 'brunello': {'rouge'}, 'vino nobile': {'rouge'},
+    'morellino': {'rouge'}, "montepulciano d'abruzzo": {'rouge'},
+    "nero d'avola": {'rouge'},
+    # Italie — blancs / effervescents exclusifs
+    'soave': {'blanc'},
+    'prosecco': {'effervescent'},
+    # France — rouges exclusifs
+    'medoc': {'rouge'}, 'margaux': {'rouge'}, 'pauillac': {'rouge'},
+    'saint-julien': {'rouge'}, 'saint-estephe': {'rouge'},
+    'saint-emilion': {'rouge'}, 'pomerol': {'rouge'},
+    'cote-rotie': {'rouge'}, 'cornas': {'rouge'},
+    'cahors': {'rouge'}, 'madiran': {'rouge'},
+    'bourgueil': {'rouge'},
+    # France — blancs exclusifs
+    'chablis': {'blanc'}, 'meursault': {'blanc'}, 'pouilly-fuisse': {'blanc'},
+    'pouilly-fume': {'blanc'}, 'muscadet': {'blanc'}, 'condrieu': {'blanc'},
+    'vouvray': {'blanc'},
+    # France — liquoreux
+    'sauternes': {'liquoreux'}, 'barsac': {'liquoreux'},
+    # France — effervescents
+    'champagne': {'champagne'}, 'cremant': {'crémant'},
+    # Espagne / Portugal
+    'rias baixas': {'blanc'}, 'cava': {'effervescent'},
+    'vinho verde': {'blanc', 'rosé'},
+    'porto': {'rouge', 'blanc'},
+    # Appellations bicolores : on ne corrige pas, mais un "rosé" y est suspect
+    'chateauneuf': {'rouge', 'blanc'},
+    'hermitage': {'rouge', 'blanc'},
+    'crozes-hermitage': {'rouge', 'blanc'},
+    'gigondas': {'rouge', 'rosé'},
+    'chinon': {'rouge', 'blanc', 'rosé'},
+}
+
+# Cépages exclusivement blancs. Sert au garde-fou asymétrique : si TOUS les cépages
+# identifiés sont blancs, le vin ne peut pas être rouge. L'inverse n'est pas vrai.
+WHITE_GRAPES: set[str] = {
+    'chardonnay', 'sauvignon blanc', 'semillon', 'muscadelle', 'chenin blanc',
+    'riesling', 'gewurztraminer', 'pinot gris', 'pinot blanc', 'muscat',
+    'sylvaner', 'auxerrois', 'aligote', 'viognier', 'marsanne', 'roussanne',
+    'melon de bourgogne', 'clairette', 'bourboulenc', 'grenache blanc', 'picpoul',
+    'garganega', 'trebbiano', 'glera', 'vermentino', 'rolle', 'carricante',
+    'catarratto', 'albarino', 'albariño', 'alvarinho', 'loureiro', 'arinto',
+    'trajadura', 'avesso', 'viura', 'malvasia', 'macabeo', 'xarel-lo', 'parellada',
+    'gruner veltliner', 'petit manseng', 'gros manseng', 'courbu', 'verdejo',
+    'pinot bianco', 'pinot grigio', 'furmint', 'assyrtiko',
+}
+
+
+def expected_types_for_appellation(appellation: str | None) -> Optional[set[str]]:
+    """Types autorisés pour cette appellation, ou None si non répertoriée."""
+    if not appellation:
+        return None
+    app_flat = _flatten_grape(appellation)
+    for key, types in APPELLATION_TYPES.items():
+        if _flatten_grape(key) in app_flat:
+            return types
+    return None
+
+
+def all_grapes_are_white(grapes: list[str]) -> bool:
+    """True si la liste est non vide et ne contient QUE des cépages blancs connus."""
+    if not grapes:
+        return False
+    white_flat = {_flatten_grape(g) for g in WHITE_GRAPES}
+    for g in grapes:
+        gf = _flatten_grape(g)
+        if not gf:
+            continue
+        if not any(gf == w or gf in w or w in gf for w in white_flat):
+            return False
+    return True
+
+
 def make_basename(wine: dict, today: str, suffix: str = '') -> str:
     """Generate YYYY-MM-DD_domain-name-vintage basename."""
     identity = wine.get('identity', {})
@@ -543,6 +710,27 @@ def searxng_search_wine_context(query: str) -> tuple[Optional[str], Optional[str
                 return context, page_url
 
     return None, None
+
+
+def build_wine_query(wine_data: dict) -> Optional[str]:
+    """Construit une requête de recherche à partir d'une fiche déjà produite par Ollama.
+
+    Sert à la 2e passe de vérification : la 1re passe lit l'étiquette, on utilise ce
+    qu'elle a lu pour retrouver la fiche du vin sur le web, puis on relance l'analyse.
+    Retourne None si l'identification est trop pauvre pour chercher quoi que ce soit.
+    """
+    identity = wine_data.get('identity', {}) or {}
+    parts: list[str] = []
+    for key in ('domain', 'name', 'appellation'):
+        value = (identity.get(key) or '').strip()
+        if value and value.lower() not in (p.lower() for p in parts):
+            parts.append(value)
+    vintage = identity.get('vintage')
+    if vintage:
+        parts.append(str(vintage))
+    query = ' '.join(parts).strip()
+    # Trop court ou trop générique : la recherche ne ramènerait que du bruit
+    return query if len(query) >= 6 else None
 
 
 def scrape_wine_text(url: str, max_chars: int = 3000) -> Optional[str]:
@@ -734,7 +922,7 @@ def analyze_with_ollama(jpeg_paths: list[Path], hint: Optional[str] = None, web_
     merged_tmp: Optional[Path] = None
     if len(jpeg_paths) > 1:
         try:
-            merged_tmp = merge_images_side_by_side(jpeg_paths, max_height=900)
+            merged_tmp = merge_images_side_by_side(jpeg_paths, max_height=MERGE_MAX_HEIGHT)
             send_paths = [merged_tmp]
         except Exception as e:
             log.warning(f"Fusion impossible ({e}), envoi séparé")
@@ -805,7 +993,11 @@ def analyze_with_ollama(jpeg_paths: list[Path], hint: Optional[str] = None, web_
         # modèle produisait parfois et qu'on rattrapait à la regex.
         "format": "json",
         "messages": messages,
-        "options": {"temperature": 0.1, "num_ctx": 16384, "num_predict": 8192},
+        "options": {
+            "temperature": 0.1,
+            "num_ctx": OLLAMA_NUM_CTX,
+            "num_predict": OLLAMA_NUM_PREDICT,
+        },
         "stream": False,
     }
 
@@ -924,6 +1116,52 @@ def validate_and_fix(data: dict, basename: str) -> dict:
             log.warning(f"vintage={vintage} dans le futur → null")
             identity['vintage'] = None
 
+    # ── Type de vin : normalisation puis contrôle de cohérence ──
+    # Doit rester AVANT le bloc decanting ci-dessous, qui teste identity['type'].
+    def _flag(msg: str, downgrade_to: str = 'medium') -> None:
+        """Trace la correction dans meta.notes et abaisse la confiance."""
+        log.warning(msg)
+        note = meta.get('notes') or ''
+        meta['notes'] = (note + f" | {msg}").lstrip(' | ')
+        current = meta.get('confidence')
+        if downgrade_to == 'low' or current == 'high':
+            meta['confidence'] = downgrade_to
+
+    raw_type  = identity.get('type')
+    norm_type = normalize_wine_type(raw_type)
+    if norm_type:
+        if norm_type != raw_type:
+            log.info(f"type {raw_type!r} normalisé en {norm_type!r}")
+        identity['type'] = norm_type
+    elif raw_type:
+        _flag(f"Type non reconnu ({raw_type!r}) — à vérifier")
+
+    expected = expected_types_for_appellation(identity.get('appellation'))
+    if expected and norm_type and norm_type not in expected:
+        if len(expected) == 1:
+            corrected = next(iter(expected))
+            _flag(
+                f"Type corrigé : «{norm_type}» annoncé mais "
+                f"{appellation or 'cette appellation'} est exclusivement en {corrected}"
+            )
+            identity['type'] = corrected
+            norm_type = corrected
+        else:
+            _flag(
+                f"Type {norm_type!r} incompatible avec {appellation or 'l’appellation'} "
+                f"(attendu : {', '.join(sorted(expected))}) — à vérifier",
+                downgrade_to='low',
+            )
+
+    # Garde-fou asymétrique par les cépages : que des raisins blancs ⇒ pas un rouge.
+    # (L'inverse est faux : un rosé se fait avec des raisins noirs.)
+    if norm_type == 'rouge' and all_grapes_are_white(identity.get('grapes') or []):
+        identity['type'] = 'blanc'
+        _flag(
+            "Type corrigé : rouge annoncé mais tous les cépages identifiés sont blancs "
+            f"({', '.join(identity.get('grapes') or [])})"
+        )
+
     # bottleSize consistency
     bottle_size = identity.get('bottleSize') or purchase.get('bottleSize') or 75
     if bottle_size not in (37, 75, 150, 300, 600):
@@ -953,8 +1191,10 @@ def validate_and_fix(data: dict, basename: str) -> dict:
     # Force decanting for wine types that always require it
     wine_type = identity.get('type', '')
     appellation_lower = (identity.get('appellation', '') or '').lower()
-    ALWAYS_DECANT_TYPES = {'red', 'fortified'}
-    ALWAYS_DECANT_APPELLATIONS = {'amarone', 'barolo', 'barbaresco', 'brunello', 'hermitage', 'côte-rôtie', 'cahors'}
+    # Valeurs en FRANÇAIS : le prompt impose "rouge", pas "red". La version anglaise
+    # de ce set ne matchait jamais, donc aucun Amarone/Barolo n'était forcé en carafe.
+    ALWAYS_DECANT_TYPES = {'rouge'}
+    ALWAYS_DECANT_APPELLATIONS = {'amarone', 'barolo', 'barbaresco', 'brunello', 'hermitage', 'côte-rôtie', 'cote-rotie', 'cahors'}
     needs_decant = (
         wine_type in ALWAYS_DECANT_TYPES and
         any(k in appellation_lower for k in ALWAYS_DECANT_APPELLATIONS)
@@ -1483,6 +1723,35 @@ def process_group(
         return False, names, 'low', '', ''
 
     _write_progress(scan_id, 'ollama', "Analyse IA terminée")
+
+    # Vérification web systématique (2e passe).
+    # Sans indice utilisateur, la lecture d'étiquette était jusqu'ici le SEUL garde-fou :
+    # aucune recherche web n'était déclenchée, alors que le contexte web fait autorité
+    # sur identity.type dans le prompt. On se sert donc du nom lu par la 1re passe pour
+    # retrouver la fiche Vivino/Wine-Searcher, puis on relance l'analyse avec ce contexte.
+    if WEB_VERIFY and not web_context:
+        verify_query = build_wine_query(wine_data)
+        if verify_query:
+            _write_progress(scan_id, 'ollama', f"Vérification web : {verify_query[:50]}…")
+            verify_context, verify_url = searxng_search_wine_context(verify_query)
+            if verify_context:
+                log.info(f"2e passe Ollama avec contexte web ({len(verify_context)} caractères)")
+                _write_progress(scan_id, 'ollama', "Ré-analyse avec le contexte web…")
+                second_pass = analyze_with_ollama(
+                    jpegs, hint=hint, web_context=verify_context, web_url=verify_url
+                )
+                if second_pass:
+                    wine_data = second_pass
+                    web_context = verify_context
+                    hint_url = hint_url or verify_url
+                    _write_progress(scan_id, 'ollama', "Analyse confirmée par le contexte web")
+                else:
+                    # La 1re passe reste exploitable : on ne perd pas le scan pour ça.
+                    log.warning("2e passe échouée — conservation du résultat de la 1re passe")
+            else:
+                log.info("Aucune fiche web trouvée — résultat de l'analyse directe conservé")
+        else:
+            log.info("Identification trop pauvre pour une vérification web")
 
     # Generate basename
     basename = make_basename(wine_data, today)
