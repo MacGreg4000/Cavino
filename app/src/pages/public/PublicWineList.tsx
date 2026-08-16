@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Wine, Search, Clock, List, Grid3x3 } from 'lucide-react';
+import { Wine, Search, Clock, List, Grid3x3, GalleryHorizontal } from 'lucide-react';
 import { Badge } from '../../components/ui/Badge';
 import { WinePhoto } from '../../components/ui/WinePhoto';
 import type { Wine as WineType } from '../../stores/wine';
@@ -195,6 +195,14 @@ export function PublicWineList() {
           >
             <Grid3x3 size={18} />
           </button>
+          <Link
+            to="/public/kitchen"
+            className="p-2 rounded-[var(--radius-sm)] text-text-muted hover:text-text transition-colors"
+            aria-label="Vue Cover Flow (tablette)"
+            title="Vue Cover Flow — idéale pour une tablette murale"
+          >
+            <GalleryHorizontal size={18} />
+          </Link>
         </div>
       </div>
 

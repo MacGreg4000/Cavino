@@ -176,6 +176,17 @@ body {
   border-radius: var(--radius-full);
 }
 
+/* ── Barre défilante masquée (filtres horizontaux) ────── */
+
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* ── Safe area for bottom nav ─────────────────────────── */
 
 .pb-safe {
