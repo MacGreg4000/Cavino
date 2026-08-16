@@ -386,7 +386,13 @@ function InfoPanel({ wine }: { wine: WineType }) {
 
   useEffect(() => {
     if (!ref.current) return;
-    animate(ref.current, { opacity: [0, 1], y: [10, 0] }, { duration: 0.35, easing: 'ease-out' });
+    // `y` est un raccourci propre aux composants <motion.div> React ; l'appel
+    // impératif animate() sur un élément DOM attend de vraies propriétés CSS.
+    animate(
+      ref.current,
+      { opacity: [0, 1], transform: ['translateY(10px)', 'translateY(0px)'] },
+      { duration: 0.35, ease: 'easeOut' }
+    );
   }, [wine.id]);
 
   return (
