@@ -45,6 +45,10 @@ export function CellarEditor() {
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [occupiedCount, setOccupiedCount] = useState(0);
+  // Dimensions au chargement — bornes minimales quand le rack est occupé
+  // (on peut agrandir la grille, jamais la réduire sous ces valeurs).
+  const [minRows, setMinRows] = useState(1);
+  const [minCols, setMinCols] = useState(1);
 
   // Charge les données existantes si on est en mode édition
   useEffect(() => {
@@ -58,6 +62,8 @@ export function CellarEditor() {
         if (cfg) {
           setRows(cfg.rows);
           setCols(cfg.cols);
+          setMinRows(cfg.rows);
+          setMinCols(cfg.cols);
           setRowLabelType(inferLabelType(cfg.labelRows));
           setColLabelType(inferLabelType(cfg.labelCols));
           setBlockedSlots(new Set(cfg.blockedSlots ?? []));
@@ -150,10 +156,11 @@ export function CellarEditor() {
           <div className="flex items-start gap-2.5 bg-warning/10 border border-warning/30 rounded-[var(--radius-md)] px-3 py-3">
             <AlertTriangle size={16} className="text-warning flex-shrink-0 mt-0.5" />
             <div>
-              <p className="text-sm font-semibold text-warning">Rack occupé — grille verrouillée</p>
+              <p className="text-sm font-semibold text-warning">Rack occupé — réduction bloquée</p>
               <p className="text-xs text-text-secondary mt-0.5">
                 {occupiedCount} bouteille{occupiedCount > 1 ? 's sont placées' : ' est placée'} dans ce rack.
-                Déplacez-les d'abord pour pouvoir modifier les dimensions ou la grille.
+                Vous pouvez agrandir la grille (ajouter des rangées/colonnes) sans les déplacer,
+                mais pas la réduire ni modifier le plan de blocage des cases.
               </p>
             </div>
           </div>
@@ -186,20 +193,25 @@ export function CellarEditor() {
           </div>
         </Card>
 
-        {/* Dimensions */}
-        <Card className={occupiedCount > 0 ? 'opacity-50 pointer-events-none' : ''}>
+        {/* Dimensions — agrandissement possible même occupé, jamais la réduction */}
+        <Card>
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold">Dimensions</h3>
-            {occupiedCount > 0 && <Lock size={14} className="text-warning" />}
+            {occupiedCount > 0 && (
+              <span className="flex items-center gap-1 text-[11px] text-warning">
+                <Lock size={12} /> Agrandir seulement
+              </span>
+            )}
           </div>
           <div className="space-y-3">
-            <Stepper value={rows} onChange={setRows} min={1} max={26} label="Rangées" />
-            <Stepper value={cols} onChange={setCols} min={1} max={26} label="Colonnes" />
+            <Stepper value={rows} onChange={setRows} min={occupiedCount > 0 ? minRows : 1} max={26} label="Rangées" />
+            <Stepper value={cols} onChange={setCols} min={occupiedCount > 0 ? minCols : 1} max={26} label="Colonnes" />
             <div className="grid grid-cols-2 gap-3">
               <Select
                 label="Labels rangées"
                 value={rowLabelType}
                 onChange={(e) => setRowLabelType(e.target.value as 'alpha' | 'numeric')}
+                disabled={occupiedCount > 0}
                 options={[
                   { value: 'alpha', label: 'Lettres (A,B,C…)' },
                   { value: 'numeric', label: 'Chiffres (1,2,3…)' },
@@ -209,12 +221,18 @@ export function CellarEditor() {
                 label="Labels colonnes"
                 value={colLabelType}
                 onChange={(e) => setColLabelType(e.target.value as 'alpha' | 'numeric')}
+                disabled={occupiedCount > 0}
                 options={[
                   { value: 'alpha', label: 'Lettres (A,B,C…)' },
                   { value: 'numeric', label: 'Chiffres (1,2,3…)' },
                 ]}
               />
             </div>
+            {occupiedCount > 0 && (
+              <p className="text-[11px] text-text-muted">
+                Le type de repère (lettres/chiffres) reste verrouillé tant que le rack est occupé, pour ne pas renommer les cases déjà utilisées.
+              </p>
+            )}
           </div>
         </Card>
 

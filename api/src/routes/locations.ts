@@ -74,6 +74,11 @@ export async function locationRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const body = updateLocationSchema.parse(req.body);
 
+    // Grille actuelle — nécessaire pour autoriser l'agrandissement d'un rack
+    // occupé tout en bloquant le rétrécissement (voir plus bas).
+    const [existing] = await db.select({ gridConfig: locations.gridConfig }).from(locations).where(eq(locations.id, id));
+    if (!existing) return reply.status(404).send({ error: 'Location not found' });
+
     const updates: Record<string, unknown> = {};
     if (body.name !== undefined) updates.name = body.name;
     if (body.type !== undefined) updates.type = body.type;
@@ -87,17 +92,25 @@ export async function locationRoutes(app: FastifyInstance) {
 
     if (!updated) return reply.status(404).send({ error: 'Location not found' });
 
-    // Si gridConfig a changé, vérifier qu'aucune bouteille n'est placée
+    // Si gridConfig a changé, vérifier qu'on ne rétrécit pas une grille occupée.
     if (body.gridConfig) {
       const [{ occupiedCount }] = await db
         .select({ occupiedCount: count() })
         .from(gridSlots)
         .where(and(eq(gridSlots.locationId, id), sql`${gridSlots.wineId} IS NOT NULL`));
 
-      if (occupiedCount > 0) {
+      // Rétrécir (moins de rangées ou de colonnes qu'avant) risquerait de faire
+      // sortir des bouteilles placées de la grille → toujours bloqué si occupé.
+      // Agrandir (rangées/colonnes égales ou supérieures) ne peut jamais faire
+      // sortir un slot existant de la grille → autorisé même occupé.
+      const oldRows = existing.gridConfig?.rows ?? 0;
+      const oldCols = existing.gridConfig?.cols ?? 0;
+      const isShrinking = body.gridConfig.rows < oldRows || body.gridConfig.cols < oldCols;
+
+      if (occupiedCount > 0 && isShrinking) {
         return reply.status(409).send({
           error: 'rack_occupied',
-          message: `Ce rack contient ${occupiedCount} bouteille${occupiedCount > 1 ? 's' : ''} placée${occupiedCount > 1 ? 's' : ''}. Déplacez-les avant de modifier la grille.`,
+          message: `Ce rack contient ${occupiedCount} bouteille${occupiedCount > 1 ? 's' : ''} placée${occupiedCount > 1 ? 's' : ''}. Déplacez-les avant de réduire la grille (vous pouvez l'agrandir sans les déplacer).`,
           occupiedCount,
         });
       }
