@@ -163,10 +163,10 @@ export function Display3D() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [index, setIndex] = useState(0);
 
-  const trackRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   // `deltaIndex` vit dans la ref (toujours à jour de façon synchrone) — c'est
   // elle qui fait foi pour le snap final. `dragOffset` (state) ne sert qu'à
-  // déclencher le re-render pendant le glissement ; le lire dans endDrag()
+  // déclencher le re-render pendant le glissement ; le lire dans finishDrag()
   // serait risqué : si pointerup arrive dans le même batch React que le
   // dernier pointermove (fin de flick rapide), le state n'aurait pas encore
   // été appliqué et le swipe serait perdu.
@@ -175,6 +175,13 @@ export function Display3D() {
     rawDeltaX: number; startTime: number; dragging: boolean;
   } | null>(null);
   const [dragOffset, setDragOffset] = useState(0); // décalage fractionnaire en cours de glissement (affichage)
+  // Quel type d'événement "possède" le geste en cours (évite de traiter deux
+  // fois le même geste quand le navigateur émet à la fois des Pointer Events
+  // ET des Touch Events pour la même interaction — cas fréquent).
+  const activeInputRef = useRef<'pointer' | 'touch' | null>(null);
+  // true juste après un vrai glissement (pas un simple tap) : évite qu'un
+  // clic de fin de geste ouvre/déplace la pochette sous le doigt.
+  const justDraggedRef = useRef(false);
 
   useEffect(() => {
     document.title = 'Cavino — Cave';
@@ -239,36 +246,51 @@ export function Display3D() {
     return () => window.removeEventListener('keydown', onKey);
   }, [index, goTo]);
 
-  // ── Glissement tactile ──────────────────────────────────────────────────
-  // Deux façons de faire avancer d'une pochette : parcourir assez de distance
-  // (~18% de la largeur), OU un flick rapide même court (vitesse mesurée en
-  // fin de geste). Sans le flick, un swipe humain normal — souvent bien en
-  // dessous de 18% de la largeur d'un écran de tablette — rebondissait à sa
-  // position de départ sans jamais faire défiler, obligeant à taper une
-  // pochette latérale au lieu de glisser.
+  // ── Glissement plein écran ───────────────────────────────────────────────
+  // Toucher n'importe où sur l'écran (pas seulement une bande étroite ni le
+  // curseur du bas) fait défiler le carrousel — sauf sur les contrôles
+  // explicitement marqués data-drag-ignore (boutons, recherche, flèches,
+  // curseur). Deux systèmes d'écoute en parallèle, mutuellement exclusifs via
+  // activeInputRef :
+  //  - Pointer Events (React, gère souris + la plupart des navigateurs tactiles)
+  //  - Touch Events bruts posés à la main avec { passive:false } pour pouvoir
+  //    appeler preventDefault() dans touchmove — nécessaire pour empêcher le
+  //    défilement natif, et plus largement supporté que Pointer Events dans
+  //    certaines WebView embarquées (ex: cartes iframe Home Assistant) où le
+  //    glissement personnalisé ET même un <input type="range"> natif peuvent
+  //    ne réagir qu'au tap sans jamais suivre un geste continu.
   const DRAG_SENSITIVITY = 2.8; // 0.5 / 2.8 ≈ 18% de la largeur pour franchir une pochette
   const FLICK_VELOCITY = 0.5;   // px/ms (~500 px/s) — vitesse à partir de laquelle un flick court compte
   const FLICK_MIN_DISTANCE = 20; // évite qu'un tap tremblant soit lu comme un flick
+  const DRAG_MOVED_THRESHOLD = 8; // distance à partir de laquelle on considère qu'il y a eu un vrai glissement
 
-  function onPointerDown(e: React.PointerEvent) {
-    dragState.current = {
-      startX: e.clientX, startIndex: index, deltaIndex: 0,
-      rawDeltaX: 0, startTime: performance.now(), dragging: true,
-    };
-    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+  function isDragIgnoreTarget(el: EventTarget | null): boolean {
+    let node = el as HTMLElement | null;
+    while (node && node !== rootRef.current) {
+      if (node.hasAttribute?.('data-drag-ignore')) return true;
+      node = node.parentElement;
+    }
+    return false;
   }
 
-  function onPointerMove(e: React.PointerEvent) {
-    if (!dragState.current?.dragging || !trackRef.current) return;
-    const width = trackRef.current.offsetWidth || 1;
-    const deltaX = e.clientX - dragState.current.startX;
+  function startDrag(clientX: number) {
+    dragState.current = {
+      startX: clientX, startIndex: index, deltaIndex: 0,
+      rawDeltaX: 0, startTime: performance.now(), dragging: true,
+    };
+  }
+
+  function moveDrag(clientX: number) {
+    if (!dragState.current?.dragging || !rootRef.current) return;
+    const width = rootRef.current.offsetWidth || 1;
+    const deltaX = clientX - dragState.current.startX;
     const deltaIndex = -(deltaX / width) * DRAG_SENSITIVITY;
     dragState.current.rawDeltaX = deltaX;
     dragState.current.deltaIndex = deltaIndex;
     setDragOffset(deltaIndex);
   }
 
-  function endDrag() {
+  function finishDrag() {
     if (!dragState.current?.dragging) return;
     const { startIndex, deltaIndex, rawDeltaX, startTime } = dragState.current;
     let target = Math.round(startIndex + deltaIndex);
@@ -283,15 +305,85 @@ export function Display3D() {
       }
     }
 
+    if (Math.abs(rawDeltaX) > DRAG_MOVED_THRESHOLD) {
+      justDraggedRef.current = true;
+      setTimeout(() => { justDraggedRef.current = false; }, 300);
+    }
+
     dragState.current = null;
     setDragOffset(0);
     goTo(target);
   }
 
+  // Pointer Events (souris + navigateurs tactiles standards)
+  function onPointerDown(e: React.PointerEvent) {
+    if (isDragIgnoreTarget(e.target)) return;
+    if (activeInputRef.current === 'touch') return; // déjà pris en charge par le flux tactile brut
+    activeInputRef.current = 'pointer';
+    startDrag(e.clientX);
+  }
+  function onPointerMove(e: React.PointerEvent) {
+    if (activeInputRef.current !== 'pointer') return;
+    moveDrag(e.clientX);
+  }
+  function endPointerDrag(e: React.PointerEvent) {
+    if (activeInputRef.current !== 'pointer') return;
+    activeInputRef.current = null;
+    finishDrag();
+    void e;
+  }
+
+  // Touch Events bruts, posés manuellement en non-passif (voir commentaire plus haut)
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+
+    function onTouchStart(e: TouchEvent) {
+      if (isDragIgnoreTarget(e.target)) return;
+      if (activeInputRef.current === 'pointer') return;
+      activeInputRef.current = 'touch';
+      startDrag(e.touches[0].clientX);
+    }
+    function onTouchMove(e: TouchEvent) {
+      if (activeInputRef.current !== 'touch') return;
+      // Empêche le défilement natif de la page/webview pendant le glissement —
+      // c'est justement ce que { passive: false } permet de faire ici, ce que
+      // les écouteurs React (passifs par défaut) ne garantissent pas partout.
+      e.preventDefault();
+      moveDrag(e.touches[0].clientX);
+    }
+    function onTouchEnd(e: TouchEvent) {
+      if (activeInputRef.current !== 'touch') return;
+      activeInputRef.current = null;
+      finishDrag();
+      void e;
+    }
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
+    el.addEventListener('touchcancel', onTouchEnd, { passive: true });
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', onTouchEnd);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [index, filtered.length]);
+
   const activeWine = filtered[index];
 
   return (
-    <div className="fixed inset-0 bg-[#0A0807] text-[#F0E8DC] overflow-hidden select-none" data-theme="dark">
+    <div
+      ref={rootRef}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={endPointerDrag}
+      onPointerCancel={endPointerDrag}
+      className="fixed inset-0 bg-[#0A0807] text-[#F0E8DC] overflow-hidden select-none touch-none"
+      data-theme="dark"
+    >
       {/* Vignette ambiance */}
       <div
         className="absolute inset-0 pointer-events-none"
@@ -305,7 +397,8 @@ export function Display3D() {
       <div className="relative z-20 flex items-center gap-3 px-6 pt-5">
         <Link
           to="/public"
-          className="flex items-center gap-2 text-white/50 hover:text-white/90 transition-colors shrink-0"
+          data-drag-ignore
+          className="flex items-center gap-2 text-white/50 hover:text-white/90 transition-colors shrink-0 touch-manipulation"
           aria-label="Vue liste"
         >
           <List size={20} />
@@ -316,8 +409,9 @@ export function Display3D() {
             {TYPE_FILTERS.map((f) => (
               <button
                 key={f.value}
+                data-drag-ignore
                 onClick={() => setTypeFilter(f.value)}
-                className={`shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium border transition-colors cursor-pointer ${
+                className={`shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium border transition-colors cursor-pointer touch-manipulation ${
                   typeFilter === f.value
                     ? 'bg-white/15 border-white/30 text-white'
                     : 'border-white/10 text-white/45 hover:text-white/80'
@@ -332,8 +426,9 @@ export function Display3D() {
               {categories.map((cat) => (
                 <button
                   key={cat.id}
+                  data-drag-ignore
                   onClick={() => setCategoryFilter(categoryFilter === cat.id ? '' : cat.id)}
-                  className={`shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-colors cursor-pointer ${
+                  className={`shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-colors cursor-pointer touch-manipulation ${
                     categoryFilter === cat.id
                       ? 'bg-white/15 border-white/30 text-white'
                       : 'border-white/10 text-white/35 hover:text-white/70'
@@ -351,7 +446,7 @@ export function Display3D() {
         </span>
 
         {searchOpen ? (
-          <div className="flex items-center gap-2 bg-white/10 rounded-full pl-3 pr-1.5 py-1.5 shrink-0">
+          <div data-drag-ignore className="flex items-center gap-2 bg-white/10 rounded-full pl-3 pr-1.5 py-1.5 shrink-0 touch-manipulation">
             <Search size={15} className="text-white/40" />
             <input
               autoFocus
@@ -373,8 +468,9 @@ export function Display3D() {
           </div>
         ) : (
           <button
+            data-drag-ignore
             onClick={() => setSearchOpen(true)}
-            className="p-2 text-white/50 hover:text-white/90 transition-colors shrink-0 cursor-pointer"
+            className="p-2 text-white/50 hover:text-white/90 transition-colors shrink-0 cursor-pointer touch-manipulation"
             aria-label="Rechercher"
           >
             <Search size={20} />
@@ -384,12 +480,7 @@ export function Display3D() {
 
       {/* ── Zone Cover Flow ── */}
       <div
-        ref={trackRef}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
-        className="absolute inset-x-0 top-[14%] bottom-[26%] cursor-grab active:cursor-grabbing touch-none"
+        className="absolute inset-x-0 top-[14%] bottom-[26%] cursor-grab active:cursor-grabbing"
         style={{ perspective: '1400px' }}
       >
         {loading && (
@@ -415,6 +506,9 @@ export function Display3D() {
                 wine={wine}
                 offset={offset}
                 onSelect={() => {
+                  // Un clic qui suit immédiatement un vrai glissement ne doit
+                  // pas aussi déplacer/ouvrir la pochette sous le doigt.
+                  if (justDraggedRef.current) return;
                   // Un simple tap sur la pochette active ouvre la fiche ; sur
                   // une pochette latérale, on s'y déplace d'abord.
                   if (Math.round(offset) === 0) {
@@ -431,17 +525,19 @@ export function Display3D() {
         {filtered.length > 1 && (
           <>
             <button
+              data-drag-ignore
               onClick={() => goTo(index - 1)}
               disabled={index === 0}
-              className="absolute left-2 top-1/2 -translate-y-1/2 z-[200] p-3 text-white/30 hover:text-white/80 disabled:opacity-0 transition-all cursor-pointer"
+              className="absolute left-2 top-1/2 -translate-y-1/2 z-[200] p-3 text-white/30 hover:text-white/80 disabled:opacity-0 transition-all cursor-pointer touch-manipulation"
               aria-label="Précédent"
             >
               <ChevronLeft size={28} />
             </button>
             <button
+              data-drag-ignore
               onClick={() => goTo(index + 1)}
               disabled={index === filtered.length - 1}
-              className="absolute right-2 top-1/2 -translate-y-1/2 z-[200] p-3 text-white/30 hover:text-white/80 disabled:opacity-0 transition-all cursor-pointer"
+              className="absolute right-2 top-1/2 -translate-y-1/2 z-[200] p-3 text-white/30 hover:text-white/80 disabled:opacity-0 transition-all cursor-pointer touch-manipulation"
               aria-label="Suivant"
             >
               <ChevronRight size={28} />
@@ -454,7 +550,7 @@ export function Display3D() {
           entièrement gérée par le navigateur (aucune logique de drag maison
           à faire fonctionner sur chaque appareil). ── */}
       {filtered.length > 1 && (
-        <div className="absolute inset-x-0 z-20 px-10" style={{ bottom: '24%' }}>
+        <div data-drag-ignore className="absolute inset-x-0 z-20 px-10" style={{ bottom: '24%' }}>
           <input
             type="range"
             min={0}
