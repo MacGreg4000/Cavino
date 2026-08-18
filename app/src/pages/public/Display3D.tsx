@@ -156,7 +156,10 @@ export function Display3D() {
   // serait risqué : si pointerup arrive dans le même batch React que le
   // dernier pointermove (fin de flick rapide), le state n'aurait pas encore
   // été appliqué et le swipe serait perdu.
-  const dragState = useRef<{ startX: number; startIndex: number; deltaIndex: number; dragging: boolean } | null>(null);
+  const dragState = useRef<{
+    startX: number; startIndex: number; deltaIndex: number;
+    rawDeltaX: number; startTime: number; dragging: boolean;
+  } | null>(null);
   const [dragOffset, setDragOffset] = useState(0); // décalage fractionnaire en cours de glissement (affichage)
 
   useEffect(() => {
@@ -223,8 +226,21 @@ export function Display3D() {
   }, [index, goTo]);
 
   // ── Glissement tactile ──────────────────────────────────────────────────
+  // Deux façons de faire avancer d'une pochette : parcourir assez de distance
+  // (~18% de la largeur), OU un flick rapide même court (vitesse mesurée en
+  // fin de geste). Sans le flick, un swipe humain normal — souvent bien en
+  // dessous de 18% de la largeur d'un écran de tablette — rebondissait à sa
+  // position de départ sans jamais faire défiler, obligeant à taper une
+  // pochette latérale au lieu de glisser.
+  const DRAG_SENSITIVITY = 2.8; // 0.5 / 2.8 ≈ 18% de la largeur pour franchir une pochette
+  const FLICK_VELOCITY = 0.5;   // px/ms (~500 px/s) — vitesse à partir de laquelle un flick court compte
+  const FLICK_MIN_DISTANCE = 20; // évite qu'un tap tremblant soit lu comme un flick
+
   function onPointerDown(e: React.PointerEvent) {
-    dragState.current = { startX: e.clientX, startIndex: index, deltaIndex: 0, dragging: true };
+    dragState.current = {
+      startX: e.clientX, startIndex: index, deltaIndex: 0,
+      rawDeltaX: 0, startTime: performance.now(), dragging: true,
+    };
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
   }
 
@@ -232,15 +248,27 @@ export function Display3D() {
     if (!dragState.current?.dragging || !trackRef.current) return;
     const width = trackRef.current.offsetWidth || 1;
     const deltaX = e.clientX - dragState.current.startX;
-    // ~1.6 pochette traversée pour une largeur d'écran glissée
-    const deltaIndex = -(deltaX / width) * 1.6;
+    const deltaIndex = -(deltaX / width) * DRAG_SENSITIVITY;
+    dragState.current.rawDeltaX = deltaX;
     dragState.current.deltaIndex = deltaIndex;
     setDragOffset(deltaIndex);
   }
 
   function endDrag() {
     if (!dragState.current?.dragging) return;
-    const target = Math.round(dragState.current.startIndex + dragState.current.deltaIndex);
+    const { startIndex, deltaIndex, rawDeltaX, startTime } = dragState.current;
+    let target = Math.round(startIndex + deltaIndex);
+
+    // Distance insuffisante pour franchir le seuil, mais geste assez rapide
+    // pour être un flick intentionnel → avance quand même d'une pochette.
+    if (target === startIndex && Math.abs(rawDeltaX) > FLICK_MIN_DISTANCE) {
+      const elapsed = Math.max(1, performance.now() - startTime);
+      const velocity = rawDeltaX / elapsed;
+      if (Math.abs(velocity) > FLICK_VELOCITY) {
+        target = startIndex + (rawDeltaX < 0 ? 1 : -1);
+      }
+    }
+
     dragState.current = null;
     setDragOffset(0);
     goTo(target);
