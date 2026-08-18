@@ -42,6 +42,7 @@ function LocationCard({ location }: { location: Location }) {
 function LocationGrid({ locationId }: { locationId: string }) {
   const { fetchGrid, deleteLocation } = useLocationStore();
   const [data, setData] = useState<{ location: Location; slots: GridSlot[] } | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<GridSlot | null>(null);
   const [showDelete, setShowDelete] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -50,8 +51,24 @@ function LocationGrid({ locationId }: { locationId: string }) {
   const { toast } = useToast();
 
   useEffect(() => {
-    fetchGrid(locationId).then(setData);
+    setData(null);
+    setLoadError(null);
+    fetchGrid(locationId)
+      .then(setData)
+      .catch((e: unknown) => setLoadError(e instanceof Error ? e.message : 'Grille indisponible'));
   }, [locationId, fetchGrid]);
+
+  if (loadError) {
+    return (
+      <div className="flex flex-col items-center gap-3 text-center py-12 px-4">
+        <AlertTriangle size={32} className="text-text-muted" />
+        <p className="text-sm text-text-secondary">{loadError}</p>
+        <Link to="/cellar" className="text-sm text-accent-bright underline underline-offset-2">
+          Retour aux emplacements
+        </Link>
+      </div>
+    );
+  }
 
   if (!data) return <div className="text-center text-text-muted py-8">Chargement...</div>;
 

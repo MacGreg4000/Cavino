@@ -109,14 +109,29 @@ export const useLocationStore = create<LocationState>((set, get) => ({
   },
 
   createLocation: async (data) => {
-    const res = await apiFetch(`${API}/locations`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-    const location: Location = await res.json();
-    set((s) => ({ locations: [...s.locations, location] }));
-    getOfflineDb().then(({ cacheLocations }) => cacheLocations(get().locations)).catch(() => {});
-    return location;
+    try {
+      const res = await apiFetch(`${API}/locations`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const location: Location = await res.json();
+      set((s) => ({ locations: [...s.locations, location] }));
+      getOfflineDb().then(({ cacheLocations }) => cacheLocations(get().locations)).catch(() => {});
+      return location;
+    } catch {
+      // Offline : crée un emplacement local temporaire + met en queue la vraie
+      // création. L'id temporaire est remplacé par le vrai id au prochain
+      // fetchLocations() une fois la sync effectuée (queueOp ne renvoie pas
+      // l'id serveur, donc pas de réconciliation fine possible avant sync).
+      const tempLocation: Location = { ...data, id: `offline-${crypto.randomUUID()}` } as Location;
+      set((s) => ({ locations: [...s.locations, tempLocation] }));
+      getOfflineDb().then(({ cacheLocations }) => cacheLocations(get().locations)).catch(() => {});
+      const sync = await getSync();
+      await sync.queueOp('POST', `${API}/locations`, data);
+      sync.useOfflineStore.getState().refreshPendingCount();
+      return tempLocation;
+    }
   },
 
   updateLocation: async (id, data) => {
