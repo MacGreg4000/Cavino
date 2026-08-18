@@ -52,6 +52,17 @@ const TYPE_FILTERS = [
 // une collection de plusieurs centaines de bouteilles, sur tablette).
 const VISIBLE_SIDE = 6;
 
+// `draggable={false}` seul ne suffit pas partout (Safari/iOS peut malgré tout
+// démarrer un drag-ghost natif sur une <img> au toucher, qui "vole" le geste
+// à notre glissement personnalisé — vu comme "l'image bouge bizarrement").
+// -webkit-user-drag: none le désactive vraiment ; -webkit-touch-callout: none
+// empêche le menu contextuel iOS (appui long "Enregistrer l'image").
+const NO_NATIVE_DRAG: React.CSSProperties = {
+  WebkitUserDrag: 'none',
+  WebkitTouchCallout: 'none',
+  KhtmlUserSelect: 'none',
+} as React.CSSProperties;
+
 interface CoverProps {
   wine: WineType;
   offset: number; // position relative à la pochette active (0 = centre, ±1, ±2…)
@@ -103,13 +114,16 @@ function Cover({ wine, offset, onSelect }: CoverProps) {
               src={wine.photoUrl}
               alt=""
               aria-hidden
-              className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-40"
+              draggable={false}
+              className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-40 select-none"
+              style={NO_NATIVE_DRAG}
             />
             <img
               src={wine.photoUrl}
               alt={wine.name}
               draggable={false}
               className="relative w-full h-full object-contain select-none"
+              style={NO_NATIVE_DRAG}
             />
           </>
         ) : (
@@ -435,6 +449,25 @@ export function Display3D() {
           </>
         )}
       </div>
+
+      {/* ── Curseur horizontal : alternative fiable au glissement tactile,
+          entièrement gérée par le navigateur (aucune logique de drag maison
+          à faire fonctionner sur chaque appareil). ── */}
+      {filtered.length > 1 && (
+        <div className="absolute inset-x-0 z-20 px-10" style={{ bottom: '24%' }}>
+          <input
+            type="range"
+            min={0}
+            max={filtered.length - 1}
+            step={1}
+            value={index}
+            onChange={(e) => goTo(Number(e.target.value))}
+            className="w-full h-8 cursor-pointer touch-auto"
+            style={{ accentColor: 'rgba(255,255,255,0.85)' }}
+            aria-label="Parcourir les bouteilles"
+          />
+        </div>
+      )}
 
       {/* ── Fiche du vin actif ── */}
       {activeWine && (
