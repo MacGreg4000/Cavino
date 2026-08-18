@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Wine, Search, Clock, List, Grid3x3, GalleryHorizontal } from 'lucide-react';
+import { Wine, Search, Clock, List, Grid3x3, GalleryHorizontal, Tags } from 'lucide-react';
 import { Badge } from '../../components/ui/Badge';
 import { WinePhoto } from '../../components/ui/WinePhoto';
 import type { Wine as WineType } from '../../stores/wine';
@@ -136,6 +136,8 @@ export function PublicWineList() {
   const [filtered, setFiltered] = useState<WineType[]>([]);
   const [search, setSearch]   = useState('');
   const [loading, setLoading] = useState(true);
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState('');
   const [viewMode, setViewMode] = useState<'list' | 'grid'>(() =>
     (localStorage.getItem('public-view-mode') as 'list' | 'grid') || 'list'
   );
@@ -154,21 +156,29 @@ export function PublicWineList() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
+    fetch('/api/public/categories')
+      .then((r) => r.json())
+      .then((data) => setCategories(Array.isArray(data) ? data : []))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
+    let list = wines;
+    if (categoryFilter) {
+      list = list.filter((w) => (w.categoryIds ?? []).includes(categoryFilter));
+    }
     const raw = search.trim();
-    if (!raw) { setFiltered(wines); return; }
-    const q = normalizeForSearch(raw);
-    setFiltered(
-      wines.filter((w) =>
+    if (raw) {
+      const q = normalizeForSearch(raw);
+      list = list.filter((w) =>
         matchesNormalizedSearch(w.name, q) ||
         matchesNormalizedSearch(w.domain, q) ||
         matchesNormalizedSearch(w.appellation, q) ||
         matchesNormalizedSearch(w.region, q)
-      )
-    );
-  }, [search, wines]);
+      );
+    }
+    setFiltered(list);
+  }, [search, wines, categoryFilter]);
 
   return (
     <div className="px-4 pt-6 pb-10">
@@ -196,7 +206,7 @@ export function PublicWineList() {
             <Grid3x3 size={18} />
           </button>
           <Link
-            to="/public/kitchen"
+            to="/public/display3d"
             className="p-2 rounded-[var(--radius-sm)] text-text-muted hover:text-text transition-colors"
             aria-label="Vue Cover Flow (tablette)"
             title="Vue Cover Flow — idéale pour une tablette murale"
@@ -217,6 +227,26 @@ export function PublicWineList() {
           className="w-full bg-surface border border-border rounded-[var(--radius-md)] pl-9 pr-4 py-2.5 text-sm text-text placeholder:text-text-muted outline-none focus:border-accent/60 transition-colors"
         />
       </div>
+
+      {/* Pills de filtre par sous-catégorie */}
+      {categories.length > 0 && (
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-4 -mx-4 px-4 no-scrollbar">
+          <Tags size={13} className="text-text-muted shrink-0" />
+          {categories.map((cat) => (
+            <button
+              key={cat.id}
+              onClick={() => setCategoryFilter(categoryFilter === cat.id ? '' : cat.id)}
+              className={`shrink-0 text-xs px-3 py-1.5 rounded-full border transition-colors cursor-pointer ${
+                categoryFilter === cat.id
+                  ? 'bg-accent/20 text-accent-bright border-accent/40'
+                  : 'bg-surface-hover text-text-muted border-border hover:text-text'
+              }`}
+            >
+              {cat.name}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Chargement */}
       {loading && (

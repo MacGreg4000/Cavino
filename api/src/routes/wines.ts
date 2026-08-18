@@ -25,6 +25,7 @@ const wineUpdateSchema = z.object({
   subRegion: z.string().optional().nullable(),
   classification: z.string().optional().nullable(),
   mentions: z.array(z.string()).optional().nullable(),
+  categoryIds: z.array(z.string()).optional().nullable(),
   // alcohol accepte string ou number (numeric DB) et null
   alcohol: z.union([z.string(), z.number()]).optional().nullable(),
   bottleSize: z.union([z.string(), z.number()]).optional().nullable(),

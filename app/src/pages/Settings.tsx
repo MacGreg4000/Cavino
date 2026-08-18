@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { MapPin, Plus, Wine, FileDown, Loader2, QrCode, Copy, Check, Printer, ExternalLink, Info, Moon, Sun, Monitor, Grid3x3 } from 'lucide-react';
+import { MapPin, Plus, Wine, FileDown, Loader2, QrCode, Copy, Check, Printer, ExternalLink, Info, Moon, Sun, Monitor, Grid3x3, Tags, Pencil, Trash2, X } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card } from '../components/ui/Card';
@@ -8,9 +8,146 @@ import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { useLocationStore } from '../stores/location';
 import { useWineStore } from '../stores/wine';
+import { useCategoryStore } from '../stores/category';
 import { apiFetch } from '../lib/api';
 import { useToast } from '../components/ui/Toast';
 import { useThemeStore, type ThemePreference } from '../stores/theme';
+
+function CategoriesCard() {
+  const { categories, fetchCategories, createCategory, updateCategory, deleteCategory } = useCategoryStore();
+  const { toast } = useToast();
+  const [newName, setNewName] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchCategories();
+  }, [fetchCategories]);
+
+  const handleCreate = async () => {
+    const name = newName.trim();
+    if (!name) return;
+    setCreating(true);
+    try {
+      await createCategory({ name });
+      setNewName('');
+    } catch (e) {
+      toast('error', e instanceof Error ? e.message : 'Création impossible');
+    }
+    setCreating(false);
+  };
+
+  const startEdit = (id: string, name: string) => {
+    setEditingId(id);
+    setEditValue(name);
+  };
+
+  const commitEdit = async () => {
+    if (!editingId) return;
+    const name = editValue.trim();
+    if (!name) { setEditingId(null); return; }
+    try {
+      await updateCategory(editingId, { name });
+    } catch (e) {
+      toast('error', e instanceof Error ? e.message : 'Mise à jour impossible');
+    }
+    setEditingId(null);
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteCategory(id);
+      toast('success', 'Sous-catégorie supprimée');
+    } catch {
+      toast('error', 'Suppression impossible');
+    }
+    setConfirmDeleteId(null);
+  };
+
+  return (
+    <Card>
+      <div className="flex items-center gap-2 mb-3">
+        <Tags size={16} className="text-accent" />
+        <h3 className="text-sm font-semibold">Sous-catégories</h3>
+        <span className="ml-auto text-xs text-text-secondary font-mono">{categories.length}</span>
+      </div>
+      <p className="text-xs text-text-muted mb-3">
+        Classement libre à côté du type (ex : Apéritif, Garde longue, Cadeaux…). Une bouteille peut appartenir à plusieurs sous-catégories.
+      </p>
+
+      {categories.length > 0 && (
+        <div className="space-y-1.5 mb-3">
+          {categories.map((cat) => (
+            <div key={cat.id} className="flex items-center gap-2 group">
+              {editingId === cat.id ? (
+                <input
+                  autoFocus
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  onBlur={commitEdit}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') commitEdit();
+                    if (e.key === 'Escape') setEditingId(null);
+                  }}
+                  className="flex-1 bg-surface-hover border border-accent/50 rounded-[var(--radius-sm)] px-2 py-1 text-sm text-text outline-none"
+                />
+              ) : (
+                <button
+                  onClick={() => startEdit(cat.id, cat.name)}
+                  className="flex-1 flex items-center gap-1.5 text-left text-sm text-text-secondary hover:text-text transition-colors cursor-pointer"
+                >
+                  <span className="flex-1 truncate">{cat.name}</span>
+                  <Pencil size={12} className="text-text-muted opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                </button>
+              )}
+
+              {confirmDeleteId === cat.id ? (
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => handleDelete(cat.id)}
+                    className="text-xs text-danger font-medium px-2 py-1 hover:underline cursor-pointer"
+                  >
+                    Supprimer
+                  </button>
+                  <button
+                    onClick={() => setConfirmDeleteId(null)}
+                    className="p-1 text-text-muted hover:text-text cursor-pointer"
+                    aria-label="Annuler"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setConfirmDeleteId(cat.id)}
+                  className="p-1.5 text-text-muted hover:text-danger transition-colors shrink-0 cursor-pointer"
+                  aria-label={`Supprimer ${cat.name}`}
+                >
+                  <Trash2 size={14} />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-center gap-2">
+        <input
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+          placeholder="Nouvelle sous-catégorie…"
+          className="flex-1 bg-surface-hover border border-border rounded-[var(--radius-sm)] px-3 py-2 text-sm text-text placeholder:text-text-muted outline-none focus:border-accent/50 transition-colors"
+        />
+        <Button variant="secondary" size="sm" onClick={handleCreate} disabled={creating || !newName.trim()}>
+          <Plus size={14} />
+        </Button>
+      </div>
+    </Card>
+  );
+}
 
 const PUBLIC_BASE = import.meta.env.VITE_PUBLIC_BASE_URL || '';
 
@@ -176,6 +313,9 @@ export function Settings() {
             </Button>
           </Link>
         </Card>
+
+        {/* Sous-catégories */}
+        <CategoriesCard />
 
         {/* Data summary */}
         <Card>

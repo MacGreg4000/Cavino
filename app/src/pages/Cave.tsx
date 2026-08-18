@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Wine, Grid3x3, List, MapPin } from 'lucide-react';
+import { Wine, Grid3x3, List, MapPin, Tags, CheckSquare, Square, X } from 'lucide-react';
 import { WinePhoto } from '../components/ui/WinePhoto';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
 import { SearchBar } from '../components/ui/Input';
 import { EmptyState } from '../components/ui/EmptyState';
+import { useToast } from '../components/ui/Toast';
 import { useWineStore, type Wine as WineType } from '../stores/wine';
+import { useCategoryStore } from '../stores/category';
 import { normalizeForSearch, matchesNormalizedSearch } from '../lib/search-normalize';
 import { slotLabel } from '../lib/slot-label';
 
@@ -100,11 +103,20 @@ function gardeStatus(wine: WineType): { label: string; variant: 'success' | 'war
 
 // ── Cartes ─────────────────────────────────────────────────────────────────────
 
-function WineListCard({ wine }: { wine: WineType }) {
+function WineListCard({ wine, selectMode, selected, onToggleSelect }: {
+  wine: WineType;
+  selectMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
+}) {
   const garde = gardeStatus(wine);
-  return (
-    <Link to={`/cave/${wine.id}`}>
-      <div className={`flex items-center gap-3 bg-surface rounded-[var(--radius-md)] p-3 border border-border border-l-4 ${typeLeftBorder(wine.type)} hover:bg-surface-hover transition-colors active:scale-[0.99]`}>
+  const inner = (
+    <div className={`flex items-center gap-3 bg-surface rounded-[var(--radius-md)] p-3 border border-border border-l-4 ${typeLeftBorder(wine.type)} ${selected ? '!border-accent !bg-accent/10' : 'hover:bg-surface-hover'} transition-colors active:scale-[0.99]`}>
+        {selectMode && (
+          selected
+            ? <CheckSquare size={20} className="text-accent-bright shrink-0" />
+            : <Square size={20} className="text-text-muted shrink-0" />
+        )}
         {wine.photoUrl ? (
           <WinePhoto src={wine.photoUrl} className="w-16 h-16 rounded-[var(--radius-sm)] flex-shrink-0" />
         ) : (
@@ -137,15 +149,34 @@ function WineListCard({ wine }: { wine: WineType }) {
           )}
         </div>
       </div>
-    </Link>
   );
+
+  if (selectMode) {
+    return (
+      <button type="button" onClick={onToggleSelect} className="w-full text-left cursor-pointer">
+        {inner}
+      </button>
+    );
+  }
+  return <Link to={`/cave/${wine.id}`}>{inner}</Link>;
 }
 
-function WineGridCard({ wine }: { wine: WineType }) {
+function WineGridCard({ wine, selectMode, selected, onToggleSelect }: {
+  wine: WineType;
+  selectMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
+}) {
   const garde = gardeStatus(wine);
-  return (
-    <Link to={`/cave/${wine.id}`}>
-      <div className={`bg-surface rounded-[var(--radius-md)] border border-border border-t-4 ${typeTopBorder(wine.type)} overflow-hidden hover:bg-surface-hover transition-colors active:scale-[0.99]`}>
+  const inner = (
+    <div className={`relative bg-surface rounded-[var(--radius-md)] border border-border border-t-4 ${typeTopBorder(wine.type)} overflow-hidden ${selected ? '!border-accent' : 'hover:bg-surface-hover'} transition-colors active:scale-[0.99]`}>
+        {selectMode && (
+          <div className="absolute top-1.5 right-1.5 z-10 bg-bg/80 backdrop-blur rounded-full p-0.5">
+            {selected
+              ? <CheckSquare size={18} className="text-accent-bright" />
+              : <Square size={18} className="text-text-muted" />}
+          </div>
+        )}
         {wine.photoUrl ? (
           <div className="aspect-[3/4] w-full overflow-hidden">
             <WinePhoto src={wine.photoUrl} alt="" className="h-full w-full" />
@@ -164,8 +195,16 @@ function WineGridCard({ wine }: { wine: WineType }) {
           </div>
         </div>
       </div>
-    </Link>
   );
+
+  if (selectMode) {
+    return (
+      <button type="button" onClick={onToggleSelect} className="w-full text-left cursor-pointer">
+        {inner}
+      </button>
+    );
+  }
+  return <Link to={`/cave/${wine.id}`}>{inner}</Link>;
 }
 
 // ── En-tête de section ─────────────────────────────────────────────────────────
@@ -186,14 +225,55 @@ function SectionHeader({ label, count }: { label: string; count: number }) {
 
 export function Cave() {
   const { wines, pendingCount, fetchWines, fetchPending } = useWineStore();
+  const { categories, fetchCategories, bulkAssign } = useCategoryStore();
+  const { toast } = useToast();
   const [search, setSearch]       = useState('');
   const [typeFilter, setTypeFilter] = useState<TypeKey | ''>('');
+  const [categoryFilter, setCategoryFilter] = useState('');
   const [viewMode, setViewMode]   = useState<'list' | 'grid'>('list');
+
+  // ── Mode sélection : réattribution en masse de bouteilles déjà en cave ───────
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkCategoryId, setBulkCategoryId] = useState('');
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   useEffect(() => {
     fetchWines();
     fetchPending();
-  }, [fetchWines, fetchPending]);
+    fetchCategories();
+  }, [fetchWines, fetchPending, fetchCategories]);
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    setBulkCategoryId('');
+  };
+
+  const handleBulkApply = async (action: 'add' | 'remove') => {
+    if (!bulkCategoryId || selectedIds.size === 0) return;
+    setBulkBusy(true);
+    try {
+      await bulkAssign(Array.from(selectedIds), bulkCategoryId, action);
+      await fetchWines();
+      const catName = categories.find((c) => c.id === bulkCategoryId)?.name ?? '';
+      toast('success', action === 'add'
+        ? `"${catName}" ajoutée à ${selectedIds.size} bouteille${selectedIds.size > 1 ? 's' : ''}`
+        : `"${catName}" retirée de ${selectedIds.size} bouteille${selectedIds.size > 1 ? 's' : ''}`);
+      exitSelectMode();
+    } catch {
+      toast('error', 'La réattribution a échoué');
+    }
+    setBulkBusy(false);
+  };
 
   // ── Filtrage + tri ───────────────────────────────────────────────────────────
 
@@ -201,6 +281,8 @@ export function Cave() {
     .filter((w) => {
       // Filtre type
       if (typeFilter && wineTypeKey(w.type) !== typeFilter) return false;
+      // Filtre sous-catégorie
+      if (categoryFilter && !(w.categoryIds ?? []).includes(categoryFilter)) return false;
       // Filtre texte
       const raw = search.trim();
       if (!raw) return true;
@@ -223,8 +305,8 @@ export function Cave() {
       return (a.name || '').localeCompare(b.name || '', 'fr');
     });
 
-  // Groupes pour les section headers (actifs seulement si pas de filtre type)
-  const showSections = !typeFilter;
+  // Groupes pour les section headers (actifs seulement si pas de filtre actif)
+  const showSections = !typeFilter && !categoryFilter;
   const groups = showSections
     ? TYPE_ORDER.map((entry) => ({
         key:   entry.key,
@@ -245,6 +327,23 @@ export function Cave() {
         subtitle={`${wines.reduce((s, w) => s + (w.quantity || 0), 0)} bouteilles`}
         action={
           <div className="flex items-center gap-1">
+            {selectMode ? (
+              <button
+                onClick={exitSelectMode}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-[var(--radius-sm)] text-xs font-medium text-text-muted hover:text-text transition-colors cursor-pointer"
+              >
+                <X size={16} /> Annuler
+              </button>
+            ) : (
+              <button
+                onClick={() => setSelectMode(true)}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-[var(--radius-sm)] text-xs font-medium text-text-muted hover:text-text transition-colors cursor-pointer"
+                aria-label="Sélectionner des bouteilles"
+                title="Sélectionner des bouteilles (réattribuer une sous-catégorie)"
+              >
+                <CheckSquare size={16} />
+              </button>
+            )}
             <Link to="/cellar" className="p-2 rounded-[var(--radius-sm)] text-text-muted hover:text-text transition-colors">
               <MapPin size={18} />
             </Link>
@@ -289,7 +388,7 @@ export function Cave() {
 
         {/* Pills de filtre par type */}
         {availableTypes.length > 1 && (
-          <div className="flex gap-1.5 overflow-x-auto pb-3 scrollbar-hide -mx-4 px-4">
+          <div className="flex gap-1.5 overflow-x-auto pb-3 no-scrollbar -mx-4 px-4">
             <button
               onClick={() => setTypeFilter('')}
               className={`shrink-0 text-xs px-3 py-1.5 rounded-full border transition-colors cursor-pointer ${
@@ -316,19 +415,47 @@ export function Cave() {
           </div>
         )}
 
+        {/* Pills de filtre par sous-catégorie */}
+        {categories.length > 0 && (
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-3 no-scrollbar -mx-4 px-4">
+            <Tags size={13} className="text-text-muted shrink-0" />
+            {categories.map((cat) => (
+              <button
+                key={cat.id}
+                onClick={() => setCategoryFilter(categoryFilter === cat.id ? '' : cat.id)}
+                className={`shrink-0 text-xs px-3 py-1.5 rounded-full border transition-colors cursor-pointer ${
+                  categoryFilter === cat.id
+                    ? 'bg-accent/20 text-accent-bright border-accent/40'
+                    : 'bg-surface-hover text-text-muted border-border hover:text-text'
+                }`}
+              >
+                {cat.name}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Résultats */}
         {filtered.length === 0 ? (
           <EmptyState
             icon={<Wine size={48} />}
-            title={search || typeFilter ? 'Aucun résultat' : 'Cave vide'}
-            description={search || typeFilter ? 'Modifiez votre recherche ou filtre' : 'Scannez des étiquettes pour commencer'}
+            title={search || typeFilter || categoryFilter ? 'Aucun résultat' : 'Cave vide'}
+            description={search || typeFilter || categoryFilter ? 'Modifiez votre recherche ou filtre' : 'Scannez des étiquettes pour commencer'}
           />
         ) : viewMode === 'list' ? (
           <div className="flex flex-col gap-2 pb-4">
             {groups.map((group) => (
               <div key={group.key}>
                 {showSections && <SectionHeader label={group.label} count={group.wines.length} />}
-                {group.wines.map((wine) => <WineListCard key={wine.id} wine={wine} />)}
+                {group.wines.map((wine) => (
+                  <WineListCard
+                    key={wine.id}
+                    wine={wine}
+                    selectMode={selectMode}
+                    selected={selectedIds.has(wine.id)}
+                    onToggleSelect={() => toggleSelected(wine.id)}
+                  />
+                ))}
               </div>
             ))}
           </div>
@@ -338,13 +465,64 @@ export function Cave() {
               <div key={group.key}>
                 {showSections && <SectionHeader label={group.label} count={group.wines.length} />}
                 <div className="grid grid-cols-2 gap-3 mt-1">
-                  {group.wines.map((wine) => <WineGridCard key={wine.id} wine={wine} />)}
+                  {group.wines.map((wine) => (
+                    <WineGridCard
+                      key={wine.id}
+                      wine={wine}
+                      selectMode={selectMode}
+                      selected={selectedIds.has(wine.id)}
+                      onToggleSelect={() => toggleSelected(wine.id)}
+                    />
+                  ))}
                 </div>
               </div>
             ))}
           </div>
         )}
+
+        {/* Espace pour ne pas passer sous la barre flottante */}
+        {selectMode && selectedIds.size > 0 && <div className="h-32" />}
       </div>
+
+      {/* Barre flottante de réattribution en masse */}
+      {selectMode && selectedIds.size > 0 && (
+        <div className="fixed bottom-16 left-0 right-0 z-30 bg-bg/95 backdrop-blur border-t border-border px-4 py-3">
+          <div className="max-w-lg mx-auto space-y-2.5">
+            <p className="text-xs text-text-secondary">
+              <span className="font-semibold text-text">{selectedIds.size}</span> bouteille{selectedIds.size > 1 ? 's' : ''} sélectionnée{selectedIds.size > 1 ? 's' : ''}
+            </p>
+            <div className="flex gap-2">
+              <select
+                value={bulkCategoryId}
+                onChange={(e) => setBulkCategoryId(e.target.value)}
+                className="flex-1 bg-surface-hover border border-border rounded-[var(--radius-sm)] px-3 py-2 text-sm text-text outline-none focus:border-accent/50"
+              >
+                <option value="">Choisir une sous-catégorie…</option>
+                {categories.map((cat) => (
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))}
+              </select>
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={!bulkCategoryId || bulkBusy}
+                loading={bulkBusy}
+                onClick={() => handleBulkApply('add')}
+              >
+                Ajouter
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={!bulkCategoryId || bulkBusy}
+                onClick={() => handleBulkApply('remove')}
+              >
+                Retirer
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

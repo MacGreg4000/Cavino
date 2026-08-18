@@ -15,6 +15,8 @@ export interface Wine {
   subRegion?: string;
   classification?: string;
   mentions?: string[];
+  /** Sous-catégories personnalisées (ids de wine_categories) */
+  categoryIds?: string[];
   alcohol?: string;
   bottleSize?: string;
   servingTempMin?: number;

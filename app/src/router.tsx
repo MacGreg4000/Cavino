@@ -22,7 +22,7 @@ import { DrinkNow } from './pages/DrinkNow';
 import { Settings } from './pages/Settings';
 import { PublicWineList } from './pages/public/PublicWineList';
 import { PublicWineDetail } from './pages/public/PublicWineDetail';
-import { KitchenDisplay } from './pages/public/KitchenDisplay';
+import { Display3D } from './pages/public/Display3D';
 
 export const router = createBrowserRouter([
   // Page login (accessible sans auth)
@@ -45,8 +45,8 @@ export const router = createBrowserRouter([
   // PublicLayout volontairement : pas de header ni de contrainte de largeur,
   // c'est un kiosque plein écran, pas une page de navigation classique.
   {
-    path: '/public/kitchen',
-    element: <KitchenDisplay />,
+    path: '/public/display3d',
+    element: <Display3D />,
   },
 
   // Application admin (protégée)

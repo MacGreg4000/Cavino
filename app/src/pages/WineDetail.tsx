@@ -15,6 +15,7 @@ import { WinePhoto } from '../components/ui/WinePhoto';
 import { SlotPicker } from '../components/cellar/SlotPicker';
 import { useWineStore, type Wine } from '../stores/wine';
 import { useLocationStore, type GridSlot } from '../stores/location';
+import { useCategoryStore } from '../stores/category';
 import { useToast } from '../components/ui/Toast';
 import { BOTTLE_FORMATS, getBottleFormat, isStandardBottle } from '../lib/bottle-formats';
 import { slotLabel } from '../lib/slot-label';
@@ -639,6 +640,7 @@ export function WineDetail() {
   const { toast } = useToast();
   const { wines, pending, drinkWine, deleteWine, updateWine } = useWineStore();
   const { locations, fetchLocations } = useLocationStore();
+  const { categories, fetchCategories } = useCategoryStore();
   const [wine, setWine] = useState<Wine | null>(null);
   const [showDrink, setShowDrink] = useState(false);
   const [drinkSlotId, setDrinkSlotId] = useState<string | null>(null);
@@ -656,6 +658,7 @@ export function WineDetail() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { fetchLocations(); }, [fetchLocations]);
+  useEffect(() => { fetchCategories(); }, [fetchCategories]);
 
   useEffect(() => {
     const found = [...wines, ...pending].find((w) => w.id === id);
@@ -872,6 +875,10 @@ export function WineDetail() {
                 <Badge variant="champagne">{getBottleFormat(wine.bottleSize).short}</Badge>
               </button>
             )}
+            {wine.categoryIds?.map((catId) => {
+              const cat = categories.find((c) => c.id === catId);
+              return cat ? <Badge key={catId} variant="default">{cat.name}</Badge> : null;
+            })}
             {isStandardBottle(wine.bottleSize) && (
               <button
                 type="button"

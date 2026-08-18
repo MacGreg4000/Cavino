@@ -1,9 +1,14 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { eq, ilike, and, or } from 'drizzle-orm';
+import { eq, ilike, and, or, asc } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { wines } from '../db/schema.js';
+import { wines, wineCategories } from '../db/schema.js';
 
 export const publicRoutes: FastifyPluginAsync = async (fastify) => {
+  // Sous-catégories (lecture seule, sans auth) — pour les filtres de la vue publique
+  fastify.get('/api/public/categories', async () => {
+    return db.select().from(wineCategories).orderBy(asc(wineCategories.sortOrder), asc(wineCategories.name));
+  });
+
   // Liste des vins disponibles (lecture seule, sans auth)
   fastify.get<{ Querystring: { search?: string; type?: string } }>(
     '/api/public/wines',
@@ -42,6 +47,7 @@ export const publicRoutes: FastifyPluginAsync = async (fastify) => {
           subRegion: wines.subRegion,
           classification: wines.classification,
           mentions: wines.mentions,
+          categoryIds: wines.categoryIds,
           alcohol: wines.alcohol,
           bottleSize: wines.bottleSize,
           servingTempMin: wines.servingTempMin,
@@ -107,6 +113,7 @@ export const publicRoutes: FastifyPluginAsync = async (fastify) => {
           subRegion: wines.subRegion,
           classification: wines.classification,
           mentions: wines.mentions,
+          categoryIds: wines.categoryIds,
           alcohol: wines.alcohol,
           bottleSize: wines.bottleSize,
           servingTempMin: wines.servingTempMin,

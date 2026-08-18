@@ -1,12 +1,50 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Check, Save } from 'lucide-react';
+import { Check, Save, Tags } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { useToast } from '../components/ui/Toast';
 import { apiFetch } from '../lib/api';
 import { useWineStore, type Wine } from '../stores/wine';
+import { useCategoryStore } from '../stores/category';
+
+// ─── Sous-catégories : sélection multiple par puces (vocabulaire contrôlé,
+//     géré dans Réglages — pas de texte libre pour éviter les doublons) ───────
+
+function CategoryChips({ selected, onToggle }: { selected: string[]; onToggle: (id: string) => void }) {
+  const { categories, fetchCategories } = useCategoryStore();
+
+  useEffect(() => {
+    fetchCategories();
+  }, [fetchCategories]);
+
+  if (categories.length === 0) {
+    return <p className="text-xs text-text-muted">Aucune sous-catégorie créée — ajoutez-en dans Réglages.</p>;
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {categories.map((cat) => {
+        const active = selected.includes(cat.id);
+        return (
+          <button
+            key={cat.id}
+            type="button"
+            onClick={() => onToggle(cat.id)}
+            className={`text-xs px-3 py-1.5 rounded-full border transition-colors cursor-pointer ${
+              active
+                ? 'bg-accent/20 text-accent-bright border-accent/40'
+                : 'bg-surface-hover text-text-muted border-border hover:text-text'
+            }`}
+          >
+            {cat.name}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 // ─── Shared field components ──────────────────────────────────────────────────
 
@@ -274,6 +312,7 @@ export function WineEdit() {
 
   const [wine, setWine] = useState<Wine | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
+  const [categoryIds, setCategoryIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -282,13 +321,19 @@ export function WineEdit() {
     if (found) {
       setWine(found);
       setForm(wineToForm(found));
+      setCategoryIds(found.categoryIds ?? []);
     } else if (id) {
       apiFetch(`/api/wines/${id}`).then((r) => r.json()).then((w: Wine) => {
         setWine(w);
         setForm(wineToForm(w));
+        setCategoryIds(w.categoryIds ?? []);
       }).catch(() => navigate('/cave'));
     }
   }, [id, wines, pending, navigate]);
+
+  const toggleCategory = (catId: string) => {
+    setCategoryIds((prev) => prev.includes(catId) ? prev.filter((c) => c !== catId) : [...prev, catId]);
+  };
 
   if (!wine || !form) return null;
 
@@ -302,7 +347,7 @@ export function WineEdit() {
     }
     setSaving(true);
     try {
-      const payload = formToPayload(form);
+      const payload = { ...formToPayload(form), categoryIds };
       const res = await apiFetch(`/api/wines/${id}`, {
         method: 'PATCH',
         body: JSON.stringify(payload),
@@ -366,6 +411,15 @@ export function WineEdit() {
           <Field label="Alcool (%)">
             <NumberInput value={form.alcohol} onChange={set('alcohol')} placeholder="ex : 13.5" step={0.1} />
           </Field>
+        </Card>
+
+        {/* Sous-catégories */}
+        <Card className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Tags size={14} className="text-accent" />
+            <SectionTitle title="Sous-catégories" />
+          </div>
+          <CategoryChips selected={categoryIds} onToggle={toggleCategory} />
         </Card>
 
         {/* Achat */}

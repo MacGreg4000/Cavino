@@ -139,17 +139,25 @@ function Cover({ wine, offset, onSelect }: CoverProps) {
   );
 }
 
-export function KitchenDisplay() {
+export function Display3D() {
   const [wines, setWines] = useState<WineType[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [index, setIndex] = useState(0);
 
   const trackRef = useRef<HTMLDivElement>(null);
-  const dragState = useRef<{ startX: number; startIndex: number; dragging: boolean } | null>(null);
-  const [dragOffset, setDragOffset] = useState(0); // décalage fractionnaire en cours de glissement
+  // `deltaIndex` vit dans la ref (toujours à jour de façon synchrone) — c'est
+  // elle qui fait foi pour le snap final. `dragOffset` (state) ne sert qu'à
+  // déclencher le re-render pendant le glissement ; le lire dans endDrag()
+  // serait risqué : si pointerup arrive dans le même batch React que le
+  // dernier pointermove (fin de flick rapide), le state n'aurait pas encore
+  // été appliqué et le swipe serait perdu.
+  const dragState = useRef<{ startX: number; startIndex: number; deltaIndex: number; dragging: boolean } | null>(null);
+  const [dragOffset, setDragOffset] = useState(0); // décalage fractionnaire en cours de glissement (affichage)
 
   useEffect(() => {
     document.title = 'Cavino — Cave';
@@ -158,6 +166,10 @@ export function KitchenDisplay() {
       .then((data) => setWines(data))
       .catch(() => {})
       .finally(() => setLoading(false));
+    fetch('/api/public/categories')
+      .then((r) => r.json())
+      .then((data) => setCategories(Array.isArray(data) ? data : []))
+      .catch(() => {});
   }, []);
 
   const filtered = useMemo(() => {
@@ -168,6 +180,9 @@ export function KitchenDisplay() {
         const t = w.type?.toLowerCase() ?? '';
         return alternatives.some((a) => t.includes(a));
       });
+    }
+    if (categoryFilter) {
+      list = list.filter((w) => (w.categoryIds ?? []).includes(categoryFilter));
     }
     const raw = search.trim();
     if (raw) {
@@ -181,7 +196,7 @@ export function KitchenDisplay() {
       );
     }
     return list;
-  }, [wines, search, typeFilter]);
+  }, [wines, search, typeFilter, categoryFilter]);
 
   // Recale l'index si le filtrage réduit la liste sous l'index courant
   useEffect(() => {
@@ -209,7 +224,7 @@ export function KitchenDisplay() {
 
   // ── Glissement tactile ──────────────────────────────────────────────────
   function onPointerDown(e: React.PointerEvent) {
-    dragState.current = { startX: e.clientX, startIndex: index, dragging: true };
+    dragState.current = { startX: e.clientX, startIndex: index, deltaIndex: 0, dragging: true };
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
   }
 
@@ -219,12 +234,13 @@ export function KitchenDisplay() {
     const deltaX = e.clientX - dragState.current.startX;
     // ~1.6 pochette traversée pour une largeur d'écran glissée
     const deltaIndex = -(deltaX / width) * 1.6;
+    dragState.current.deltaIndex = deltaIndex;
     setDragOffset(deltaIndex);
   }
 
   function endDrag() {
     if (!dragState.current?.dragging) return;
-    const target = Math.round(dragState.current.startIndex + dragOffset);
+    const target = Math.round(dragState.current.startIndex + dragState.current.deltaIndex);
     dragState.current = null;
     setDragOffset(0);
     goTo(target);
@@ -253,23 +269,42 @@ export function KitchenDisplay() {
           <List size={20} />
         </Link>
 
-        <div className="flex items-center gap-2 flex-1 min-w-0 overflow-x-auto no-scrollbar">
-          {TYPE_FILTERS.map((f) => (
-            <button
-              key={f.value}
-              onClick={() => setTypeFilter(f.value)}
-              className={`shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium border transition-colors cursor-pointer ${
-                typeFilter === f.value
-                  ? 'bg-white/15 border-white/30 text-white'
-                  : 'border-white/10 text-white/45 hover:text-white/80'
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
+        <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+            {TYPE_FILTERS.map((f) => (
+              <button
+                key={f.value}
+                onClick={() => setTypeFilter(f.value)}
+                className={`shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium border transition-colors cursor-pointer ${
+                  typeFilter === f.value
+                    ? 'bg-white/15 border-white/30 text-white'
+                    : 'border-white/10 text-white/45 hover:text-white/80'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+          {categories.length > 0 && (
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+              {categories.map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => setCategoryFilter(categoryFilter === cat.id ? '' : cat.id)}
+                  className={`shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-colors cursor-pointer ${
+                    categoryFilter === cat.id
+                      ? 'bg-white/15 border-white/30 text-white'
+                      : 'border-white/10 text-white/35 hover:text-white/70'
+                  }`}
+                >
+                  {cat.name}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
-        <span className="font-mono text-xs text-white/35 shrink-0 hidden sm:inline">
+        <span className="font-mono text-xs text-white/35 shrink-0 hidden sm:inline self-start pt-1.5">
           {filtered.length ? `${index + 1} / ${filtered.length}` : '0 / 0'}
         </span>
 

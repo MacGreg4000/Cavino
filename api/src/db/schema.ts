@@ -1,5 +1,17 @@
 import { pgTable, uuid, text, integer, numeric, boolean, date, timestamp, jsonb } from 'drizzle-orm/pg-core';
 
+// ── Sous-catégories personnalisées ────────────────────────
+// Vocabulaire libre défini par l'utilisateur (ex: "Apéritif", "Garde longue",
+// "Cadeaux"...) — indépendant du type de vin (rouge/blanc/...), une bouteille
+// peut appartenir à plusieurs sous-catégories à la fois (wines.categoryIds).
+export const wineCategories = pgTable('wine_categories', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull().unique(),
+  color: text('color'),
+  sortOrder: integer('sort_order').default(0).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+});
+
 // ── Emplacements ──────────────────────────────────────────
 export const locations = pgTable('locations', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -44,6 +56,8 @@ export const wines = pgTable('wines', {
   subRegion: text('sub_region'),
   classification: text('classification'),
   mentions: text('mentions').array(),
+  /** Sous-catégories personnalisées (wine_categories.id) — vocabulaire libre défini par l'utilisateur */
+  categoryIds: text('category_ids').array(),
   alcohol: numeric('alcohol', { precision: 4, scale: 1 }),
   bottleSize: numeric('bottle_size', { precision: 5, scale: 1 }).default('75'),
 

@@ -164,6 +164,14 @@ export function PublicWineDetail() {
   const [wine, setWine] = useState<Wine | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    fetch('/api/public/categories')
+      .then((r) => r.json())
+      .then((data) => setCategories(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -238,6 +246,10 @@ export function PublicWineDetail() {
               </Badge>
             )}
             {wine.classification && <Badge variant="gold">{wine.classification}</Badge>}
+            {wine.categoryIds?.map((catId) => {
+              const cat = categories.find((c) => c.id === catId);
+              return cat ? <Badge key={catId} variant="default">{cat.name}</Badge> : null;
+            })}
             {!!wine.slotIds?.length && (
               <div className="flex items-center gap-1 flex-wrap">
                 {wine.slotIds.map((slotId) => (
