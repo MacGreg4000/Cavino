@@ -57,6 +57,16 @@ OLLAMA_NUM_PREDICT = int(os.getenv('OLLAMA_NUM_PREDICT', '4096'))
 # Mettre à 0 pour désactiver (scans ~2× plus rapides, mais moins fiables).
 WEB_VERIFY = os.getenv('WEB_VERIFY', '1') not in ('0', 'false', 'False', '')
 
+# ─── Gemini (cloud, primaire) — Ollama (local, repli) ────────────────────────────
+# Si GEMINI_API_KEY est défini, chaque scan tente d'abord Gemini (cloud, quota
+# gratuit journalier largement suffisant pour un usage cave à vin perso). En cas
+# d'échec (quota dépassé, réseau coupé, clé absente...) on retombe automatiquement
+# sur Ollama en local — jamais de scan perdu faute de connexion internet.
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '').strip()
+GEMINI_MODEL   = os.getenv('GEMINI_MODEL', 'gemini-3.5-flash')
+GEMINI_URL     = f'https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent'
+GEMINI_MAX_OUTPUT_TOKENS = int(os.getenv('GEMINI_MAX_OUTPUT_TOKENS', '4096'))
+
 SOURCE   = CAVE_BASE / 'A analyser'
 DEST     = CAVE_BASE / 'Prêt à être importé'
 REF      = CAVE_BASE / 'importé'
@@ -885,40 +895,81 @@ CHAMPAGNES et CRÉMANTS — enrichissements obligatoires dans identity.mentions 
 Retourne UNIQUEMENT le JSON, rien d'autre."""
 
 
-def analyze_with_ollama(jpeg_paths: list[Path], hint: Optional[str] = None, web_context: Optional[str] = None, web_url: Optional[str] = None) -> Optional[dict]:
-    """Send images to Ollama vision model, return parsed wine dict or None."""
-    today = date.today().isoformat()
-
-    # Contexte adaptatif selon le nombre de photos.
-    # Quand il y en a 2+, elles sont FUSIONNÉES horizontalement en UNE image :
-    # on l'explicite au modèle pour qu'il sache où regarder pour quelle info.
+def _build_photo_context(jpeg_paths: list[Path]) -> str:
+    """Contexte adaptatif selon le nombre de photos, partagé entre tous les backends.
+    Quand il y en a 2+, elles sont FUSIONNÉES horizontalement en UNE image : on
+    l'explicite au modèle pour qu'il sache où regarder pour quelle info."""
     if len(jpeg_paths) == 1:
-        photo_context = (
+        return (
             "Une seule photo de la bouteille est fournie. "
             "Analyse l'étiquette visible (recto ou verso) et déduis les informations manquantes "
             "grâce à ta connaissance du vin. Les informations non visibles → null."
         )
-    else:
-        photo_context = (
-            f"L'image fournie est en réalité une FUSION HORIZONTALE de {len(jpeg_paths)} photos de la MÊME bouteille, "
-            "assemblées côte à côte (PAS plusieurs bouteilles).\n"
-            "  • MOITIÉ GAUCHE de l'image = RECTO (étiquette frontale) — nom du vin, domaine/château, "
-            "appellation, millésime, classification.\n"
-            "  • MOITIÉ DROITE de l'image = VERSO (contre-étiquette) — degré d'alcool, cépages, "
-            "producteur, mentions légales, éventuelles recommandations d'accords ou de service.\n"
-            "RÈGLE : combine les informations des DEUX moitiés dans UNE SEULE fiche JSON. "
-            "Ne crée JAMAIS deux bouteilles distinctes même si les étiquettes se ressemblent peu. "
-            "Si une information apparaît sur les deux moitiés, privilégie la plus lisible."
-        )
+    return (
+        f"L'image fournie est en réalité une FUSION HORIZONTALE de {len(jpeg_paths)} photos de la MÊME bouteille, "
+        "assemblées côte à côte (PAS plusieurs bouteilles).\n"
+        "  • MOITIÉ GAUCHE de l'image = RECTO (étiquette frontale) — nom du vin, domaine/château, "
+        "appellation, millésime, classification.\n"
+        "  • MOITIÉ DROITE de l'image = VERSO (contre-étiquette) — degré d'alcool, cépages, "
+        "producteur, mentions légales, éventuelles recommandations d'accords ou de service.\n"
+        "RÈGLE : combine les informations des DEUX moitiés dans UNE SEULE fiche JSON. "
+        "Ne crée JAMAIS deux bouteilles distinctes même si les étiquettes se ressemblent peu. "
+        "Si une information apparaît sur les deux moitiés, privilégie la plus lisible."
+    )
 
+
+def _build_user_text(jpeg_paths: list[Path], hint: Optional[str], web_context: Optional[str], web_url: Optional[str]) -> str:
+    """Construit le message utilisateur (consignes langue + hint + contexte web +
+    schéma JSON) partagé entre Ollama et Gemini. Le hint utilisateur est isolé
+    dans un tag XML `<user_hint>` pour que le modèle le traite comme une source
+    séparée (pas du contenu à ignorer dilué dans les consignes)."""
+    today = date.today().isoformat()
     prompt = SYSTEM_PROMPT.format(
         today=today,
         knowledge=WINE_KNOWLEDGE.strip(),
-        photo_context=photo_context,
+        photo_context=_build_photo_context(jpeg_paths),
     )
+    return (
+        "⚠️ LANGUE OBLIGATOIRE : Tous les textes (description, palate, style, agingNotes, "
+        "arômes, accords, occasions, glassType) DOIVENT être rédigés en FRANÇAIS. "
+        "Ne jamais utiliser l'anglais, même partiellement.\n\n"
+    ) + (
+        f"<user_hint>\n{hint}\n</user_hint>\n"
+        "Le bloc <user_hint> ci-dessus est une information directe du propriétaire de la bouteille. "
+        "Traite-la comme une SOURCE DE VÉRITÉ qui prime sur toute lecture ambiguë de l'étiquette : "
+        "nom, domaine, millésime, prix indicatif, cépage. Si l'étiquette est floue ou contradictoire, "
+        "le <user_hint> fait foi. Si le hint parle d'un prix/cépage/année absent de l'étiquette, "
+        "utilise-le tel quel.\n\n"
+        if hint else ""
+    ) + (
+        f"<web_context source=\"{web_url}\">\n{web_context}\n</web_context>\n"
+        "Le bloc <web_context> ci-dessus est extrait d'une page Vivino ou Wine-Searcher correspondant à ce vin. "
+        "C'est une SOURCE DE VÉRITÉ ABSOLUE pour les champs suivants — ils ÉCRASENT toute déduction visuelle :\n"
+        "  • identity.type (rouge/blanc/rosé/champagne…) — si la page parle de 'blanc' ou 'white' ou 'Blanc de Blancs', identity.type = 'blanc'\n"
+        "  • identity.grapes (cépages réels de l'appellation)\n"
+        "  • identity.appellation (appellation officielle complète)\n"
+        "  • identity.name et identity.domain si clairement mentionnés\n"
+        "  • purchase.estimatedValue (prix du marché Vivino/Wine-Searcher)\n"
+        "Utilise aussi ces données pour : description, notes de dégustation, accords, millésime.\n\n"
+        if web_context else ""
+    ) + prompt
 
-    # Fusionner les images côte à côte si plusieurs (contourne le bug qwen3-vl:8b
-    # qui n'arrive pas à produire du JSON valide quand plusieurs images sont envoyées)
+
+# Consignes système partagées : réponse JSON pure, français uniquement.
+SYSTEM_INSTRUCTION_TEXT = (
+    "Tu es un assistant qui répond UNIQUEMENT en JSON. "
+    "Tu rédiges TOUJOURS en FRANÇAIS : descriptions, arômes, accords, notes, tous les textes sans exception. "
+    "Ne produis jamais de raisonnement, d'explication, ni de texte hors du JSON. "
+    "Ta réponse DOIT commencer par '{' et se terminer par '}'. Rien d'autre."
+)
+
+
+def _prepare_images(jpeg_paths: list[Path]) -> tuple[list[str], Optional[Path]]:
+    """Fusionne les photos recto/verso si plusieurs (contourne un bug connu de
+    qwen3-vl:8b qui échoue à produire du JSON valide avec plusieurs images —
+    inoffensif à garder pour Gemini qui gère très bien plusieurs images, mais
+    évite de dupliquer deux chemins de code différents) puis encode en base64.
+    Retourne (images_b64, chemin_temp_fusion_ou_None — à nettoyer par l'appelant)."""
     merged_tmp: Optional[Path] = None
     if len(jpeg_paths) > 1:
         try:
@@ -937,6 +988,129 @@ def analyze_with_ollama(jpeg_paths: list[Path], hint: Optional[str] = None, web_
         except Exception as e:
             log.warning(f"Impossible de lire {p.name}: {e}")
 
+    return images_b64, merged_tmp
+
+
+def analyze_with_gemini(jpeg_paths: list[Path], hint: Optional[str] = None, web_context: Optional[str] = None, web_url: Optional[str] = None) -> Optional[dict]:
+    """Envoie les images à l'API Gemini (cloud), retourne le dict vin parsé ou None.
+    None couvre volontairement tous les cas d'échec (pas de clé, quota dépassé,
+    réseau coupé, réponse bloquée par les filtres de sécurité, JSON invalide) —
+    l'appelant retombe alors sur Ollama en local sans distinguer la cause."""
+    if not GEMINI_API_KEY:
+        return None
+
+    images_b64, merged_tmp = _prepare_images(jpeg_paths)
+    if not images_b64:
+        log.error("Aucune image valide à envoyer à Gemini")
+        return None
+
+    user_text = _build_user_text(jpeg_paths, hint, web_context, web_url)
+    parts: list[dict] = [{"text": user_text}]
+    for b64 in images_b64:
+        parts.append({"inline_data": {"mime_type": "image/jpeg", "data": b64}})
+
+    payload = {
+        "contents": [{"role": "user", "parts": parts}],
+        "system_instruction": {"parts": [{"text": SYSTEM_INSTRUCTION_TEXT}]},
+        "generationConfig": {
+            "temperature": 0.1,
+            # JSON mode natif Gemini : garantit une réponse JSON valide, comme
+            # format:"json" côté Ollama — évite blocs markdown et texte parasite.
+            "response_mime_type": "application/json",
+            "max_output_tokens": GEMINI_MAX_OUTPUT_TOKENS,
+            # gemini-3.5-flash réfléchit par défaut ("thinking", medium) avant de
+            # répondre — des tokens de raisonnement invisibles qui partagent le
+            # même budget que max_output_tokens (vérifié : sans ce réglage, un
+            # test trivial consommait déjà 359 tokens de réflexion pour 14 tokens
+            # de réponse réelle). Inutile pour une lecture d'étiquette guidée par
+            # un prompt aussi détaillé ; "minimal" l'élimine, gagne en latence et
+            # laisse tout le budget de sortie à la fiche JSON elle-même.
+            "thinking_config": {"thinking_level": "minimal"},
+        },
+    }
+
+    try:
+        try:
+            resp = requests.post(
+                GEMINI_URL,
+                headers={"x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json"},
+                json=payload,
+                timeout=90,
+            )
+        except requests.Timeout:
+            log.error("Gemini timeout (90s)")
+            return None
+        except requests.RequestException as e:
+            log.error(f"Erreur réseau Gemini: {e}")
+            return None
+
+        if resp.status_code == 429:
+            log.warning("Gemini : quota gratuit journalier dépassé (429)")
+            return None
+        if not resp.ok:
+            log.error(f"Gemini HTTP {resp.status_code}: {resp.text[:300]}")
+            return None
+
+        resp_json = resp.json()
+        candidates = resp_json.get('candidates') or []
+        if not candidates:
+            log.error(f"Gemini n'a retourné aucun candidat (promptFeedback={resp_json.get('promptFeedback')})")
+            return None
+
+        candidate = candidates[0]
+        finish_reason = candidate.get('finishReason')
+        if finish_reason not in (None, 'STOP', 'MAX_TOKENS'):
+            # Ex: SAFETY (bloqué par les filtres), RECITATION — rare pour une étiquette de vin
+            log.error(f"Gemini a interrompu la génération ({finish_reason})")
+            return None
+
+        raw = ''.join(p.get('text', '') for p in candidate.get('content', {}).get('parts', [])).strip()
+        if not raw:
+            log.error("Réponse Gemini vide")
+            return None
+
+        # Au cas où le modèle enveloppe malgré tout dans un bloc markdown
+        cleaned = re.sub(r'^```(?:json)?\s*', '', raw, flags=re.MULTILINE)
+        cleaned = re.sub(r'```\s*$', '', cleaned.strip(), flags=re.MULTILINE).strip()
+        m = re.search(r'\{.*\}', cleaned, re.DOTALL)
+        if m:
+            cleaned = m.group(0)
+
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError as e:
+            log.error(f"JSON invalide retourné par Gemini: {e}")
+            log.error(f"Réponse brute (500 chars): {raw[:500]}")
+            return None
+
+    finally:
+        if merged_tmp and merged_tmp.exists():
+            try:
+                merged_tmp.unlink()
+            except Exception:
+                pass
+
+
+def analyze_wine(jpeg_paths: list[Path], hint: Optional[str] = None, web_context: Optional[str] = None, web_url: Optional[str] = None) -> tuple[Optional[dict], str]:
+    """Point d'entrée unique de l'analyse IA : essaie Gemini (cloud, si une clé
+    est configurée) puis se rabat automatiquement sur Ollama en local en cas
+    d'échec. Retourne (résultat, nom_du_backend_utilisé) pour traçabilité dans
+    les logs et la progression affichée à l'utilisateur."""
+    if GEMINI_API_KEY:
+        log.info(f"Analyse via Gemini ({GEMINI_MODEL})…")
+        result = analyze_with_gemini(jpeg_paths, hint=hint, web_context=web_context, web_url=web_url)
+        if result is not None:
+            return result, 'gemini'
+        log.warning("Gemini indisponible ou en échec — repli sur Ollama en local")
+
+    log.info(f"Analyse via Ollama ({OLLAMA_MODEL})…")
+    result = analyze_with_ollama(jpeg_paths, hint=hint, web_context=web_context, web_url=web_url)
+    return result, 'ollama'
+
+
+def analyze_with_ollama(jpeg_paths: list[Path], hint: Optional[str] = None, web_context: Optional[str] = None, web_url: Optional[str] = None) -> Optional[dict]:
+    """Send images to Ollama vision model, return parsed wine dict or None."""
+    images_b64, merged_tmp = _prepare_images(jpeg_paths)
     if not images_b64:
         log.error("Aucune image valide à envoyer à Ollama")
         return None
@@ -944,43 +1118,14 @@ def analyze_with_ollama(jpeg_paths: list[Path], hint: Optional[str] = None, web_
     messages = [
         {
             "role": "system",
-            "content": (
-                "Tu es un assistant qui répond UNIQUEMENT en JSON. "
-                "Tu rédiges TOUJOURS en FRANÇAIS : descriptions, arômes, accords, notes, tous les textes sans exception. "
-                "Ne produis jamais de raisonnement, d'explication, ni de texte hors du JSON. "
-                "Ta réponse DOIT commencer par '{' et se terminer par '}'. Rien d'autre."
-            ),
+            "content": SYSTEM_INSTRUCTION_TEXT,
         },
         {
             "role": "user",
-            # /no_think en tête du message user = méthode officielle qwen3 pour désactiver le thinking.
-            # Le hint utilisateur est isolé dans un tag XML `<user_hint>` pour que le modèle le traite
-            # comme une source séparée (pas du contenu à ignorer dilué dans les consignes).
-            "content": (
-                "/no_think\n"
-                "⚠️ LANGUE OBLIGATOIRE : Tous les textes (description, palate, style, agingNotes, "
-                "arômes, accords, occasions, glassType) DOIVENT être rédigés en FRANÇAIS. "
-                "Ne jamais utiliser l'anglais, même partiellement.\n\n"
-            ) + (
-                f"<user_hint>\n{hint}\n</user_hint>\n"
-                "Le bloc <user_hint> ci-dessus est une information directe du propriétaire de la bouteille. "
-                "Traite-la comme une SOURCE DE VÉRITÉ qui prime sur toute lecture ambiguë de l'étiquette : "
-                "nom, domaine, millésime, prix indicatif, cépage. Si l'étiquette est floue ou contradictoire, "
-                "le <user_hint> fait foi. Si le hint parle d'un prix/cépage/année absent de l'étiquette, "
-                "utilise-le tel quel.\n\n"
-                if hint else ""
-            ) + (
-                f"<web_context source=\"{web_url}\">\n{web_context}\n</web_context>\n"
-                "Le bloc <web_context> ci-dessus est extrait d'une page Vivino ou Wine-Searcher correspondant à ce vin. "
-                "C'est une SOURCE DE VÉRITÉ ABSOLUE pour les champs suivants — ils ÉCRASENT toute déduction visuelle :\n"
-                "  • identity.type (rouge/blanc/rosé/champagne…) — si la page parle de 'blanc' ou 'white' ou 'Blanc de Blancs', identity.type = 'blanc'\n"
-                "  • identity.grapes (cépages réels de l'appellation)\n"
-                "  • identity.appellation (appellation officielle complète)\n"
-                "  • identity.name et identity.domain si clairement mentionnés\n"
-                "  • purchase.estimatedValue (prix du marché Vivino/Wine-Searcher)\n"
-                "Utilise aussi ces données pour : description, notes de dégustation, accords, millésime.\n\n"
-                if web_context else ""
-            ) + prompt,
+            # /no_think en tête du message user = méthode officielle qwen3 pour
+            # désactiver le thinking — spécifique à Ollama/qwen3, pas ajouté au
+            # texte partagé _build_user_text() utilisé aussi par Gemini.
+            "content": "/no_think\n" + _build_user_text(jpeg_paths, hint, web_context, web_url),
             "images": images_b64,
         },
     ]
@@ -1710,19 +1855,19 @@ def process_group(
             else:
                 _write_progress(scan_id, 'ollama', "Aucun contexte web — analyse par image seule")
 
-    # Analyze with Ollama
-    log.info(f"Envoi à Ollama ({len(jpegs)} image(s))...")
-    _write_progress(scan_id, 'ollama', f"Envoi au modèle IA ({OLLAMA_MODEL})…")
-    wine_data = analyze_with_ollama(jpegs, hint=hint, web_context=web_context, web_url=hint_url)
+    # Analyse IA — Gemini en primaire (si configuré), Ollama en repli automatique
+    log.info(f"Envoi à l'IA ({len(jpegs)} image(s))...")
+    _write_progress(scan_id, 'ollama', f"Envoi au modèle IA ({'Gemini' if GEMINI_API_KEY else OLLAMA_MODEL})…")
+    wine_data, backend_used = analyze_wine(jpegs, hint=hint, web_context=web_context, web_url=hint_url)
 
     if wine_data is None:
         _cleanup_temp(jpegs)
         _write_progress(scan_id, 'ollama', "Le modèle n'a pas retourné de résultat valide", 'error')
-        _write_progress(scan_id, 'done', "Échec Ollama", 'error')
+        _write_progress(scan_id, 'done', "Échec de l'analyse IA", 'error')
         _move_to_errors(photos, scan_id)
         return False, names, 'low', '', ''
 
-    _write_progress(scan_id, 'ollama', "Analyse IA terminée")
+    _write_progress(scan_id, 'ollama', f"Analyse IA terminée ({backend_used})")
 
     # Vérification web systématique (2e passe).
     # Sans indice utilisateur, la lecture d'étiquette était jusqu'ici le SEUL garde-fou :
@@ -1735,9 +1880,9 @@ def process_group(
             _write_progress(scan_id, 'ollama', f"Vérification web : {verify_query[:50]}…")
             verify_context, verify_url = searxng_search_wine_context(verify_query)
             if verify_context:
-                log.info(f"2e passe Ollama avec contexte web ({len(verify_context)} caractères)")
+                log.info(f"2e passe IA avec contexte web ({len(verify_context)} caractères)")
                 _write_progress(scan_id, 'ollama', "Ré-analyse avec le contexte web…")
-                second_pass = analyze_with_ollama(
+                second_pass, _ = analyze_wine(
                     jpegs, hint=hint, web_context=verify_context, web_url=verify_url
                 )
                 if second_pass:
@@ -2104,7 +2249,8 @@ def ping_ollama() -> bool:
 def main():
     log.info("=" * 52)
     log.info("🍷 Cave Scan Service — démarrage")
-    log.info(f"   Ollama  : {OLLAMA_URL} ({OLLAMA_MODEL})")
+    log.info(f"   Gemini  : {'✅ primaire (' + GEMINI_MODEL + ')' if GEMINI_API_KEY else '❌ pas de clé — Ollama utilisé directement'}")
+    log.info(f"   Ollama  : {OLLAMA_URL} ({OLLAMA_MODEL}) — repli{' automatique' if GEMINI_API_KEY else ''}")
     log.info(f"   SearXNG : {SEARXNG_URL}")
     log.info(f"   Source  : {SOURCE}")
     log.info(f"   Dest    : {DEST}")
