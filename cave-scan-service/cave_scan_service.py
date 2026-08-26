@@ -1584,23 +1584,85 @@ def fetch_photo_from_wine_page(page_url: str) -> Optional[tuple[bytes, str]]:
     return data, ext
 
 
+def _has_real_transparency(data: bytes) -> bool:
+    """True si l'image a un canal alpha réellement utilisé (pas juste un mode
+    RGBA sans aucun pixel transparent). Un PNG à fond transparent se détache
+    proprement sur les cartes/le Cover Flow sombres de l'app — bien mieux
+    qu'une vignette marchande avec fond blanc/gris."""
+    try:
+        img = Image.open(BytesIO(data))
+        if img.mode not in ('RGBA', 'LA') and not (img.mode == 'P' and 'transparency' in img.info):
+            return False
+        alpha = img.convert('RGBA').split()[-1]
+        return alpha.getextrema()[0] < 250  # au moins un pixel notablement transparent
+    except Exception:
+        return False
+
+
+def _score_photo(data: bytes, ratio: float) -> float:
+    """Score un candidat photo — plus haut = meilleur choix pour la fiche.
+    Favorise la taille (proxy de qualité/résolution), le ratio portrait
+    typique d'une bouteille, et surtout un vrai fond transparent."""
+    score = min(len(data) / 1024, 300)  # taille en KB, plafonnée
+    if 2.0 <= ratio <= 4.0:
+        score += 40
+    elif 1.1 <= ratio < 2.0:
+        score += 15
+    if _has_real_transparency(data):
+        score += 150
+    return score
+
+
+# Score à partir duquel on considère avoir trouvé une excellente photo et on
+# arrête de chercher (typiquement : fond transparent + taille correcte).
+GREAT_PHOTO_SCORE = 220
+# Score en dessous duquel on tente quand même la recherche d'images large
+# (phase 3) même si priority_url/phase1 ont déjà renvoyé quelque chose —
+# c'est exactement le cas d'une petite vignette marchande (ex: 40 Ko Vivino).
+DECENT_PHOTO_SCORE = 150
+
+
 def search_official_photo(wine: dict, scan_bytes: Optional[bytes], priority_url: Optional[str] = None) -> Optional[tuple[bytes, str]]:
     """Cherche la photo officielle de la bouteille via SearXNG + scraping de pages vin.
 
-    Stratégie :
-    1. Si priority_url (hint utilisateur) → essai direct
-    2. Recherche SearXNG sur sites de confiance avec vérification de pertinence :
-       on vérifie que la page correspond bien au vin cherché avant d'utiliser sa photo
-    3. Fallback : requêtes moins restrictives si les premières échouent
+    Stratégie : plusieurs sources sont essayées et comparées par score (taille,
+    ratio, transparence réelle) plutôt que de s'arrêter sur le premier résultat
+    valide — une page qui identifie bien le vin (ex: Vivino, utilisée pour
+    vérifier le type/l'appellation) n'a pas forcément la meilleure photo.
+    1. priority_url (hint utilisateur ou page de vérification d'identité)
+    2. Sites de confiance (Vivino, Wine-Searcher...) avec vérification de pertinence
+    3. Recherche d'images ciblée "fond transparent" — c'est souvent là que se
+       trouve la vraie bonne photo (boutique du domaine, fiche produit soignée)
+    4. Recherche d'images généraliste, en dernier recours
     """
-    # ── Essai prioritaire : URL du hint ─────────────────────────────────────────
+    candidates: list[tuple[bytes, str, float]] = []
+
+    def _consider(photo: Optional[tuple[bytes, str]], source: str) -> None:
+        if not photo:
+            return
+        data, ext = photo
+        try:
+            img = Image.open(BytesIO(data))
+            ratio = img.size[1] / img.size[0] if img.size[0] else 0.0
+        except Exception:
+            ratio = 0.0
+        score = _score_photo(data, ratio)
+        candidates.append((data, ext, score))
+        log.info(f"  Candidat ({source}) : {len(data)//1024} Ko, ratio {ratio:.2f}, score {score:.0f}")
+
+    def _best() -> Optional[tuple[bytes, str]]:
+        if not candidates:
+            return None
+        data, ext, score = max(candidates, key=lambda c: c[2])
+        return data, ext
+
+    # ── priority_url (hint utilisateur ou page de vérification d'identité) ──────
     if priority_url:
         log.info(f"📎 Essai photo depuis URL hint: {priority_url}")
-        photo = fetch_photo_from_wine_page(priority_url)
-        if photo:
-            log.info(f"✓ Photo trouvée via URL hint")
-            return photo
-        log.info(f"  Aucune photo sur l'URL hint — SearXNG en fallback")
+        _consider(fetch_photo_from_wine_page(priority_url), 'hint')
+        if candidates and max(c[2] for c in candidates) >= GREAT_PHOTO_SCORE:
+            log.info("✓ Photo hint déjà excellente — recherche arrêtée")
+            return _best()
 
     identity = wine.get('identity', {})
     domain  = (identity.get('domain', '') or '').strip()
@@ -1676,15 +1738,20 @@ def search_official_photo(wine: dict, scan_bytes: Optional[bytes], priority_url:
                     return photo
         return None
 
-    def _try_image_search(query: str) -> Optional[tuple[bytes, str]]:
-        """Phase 3 : recherche d'images directe via SearXNG (équivalent Google Images).
+    def _try_image_search(query: str, max_results: int = 1) -> list[tuple[bytes, str]]:
+        """Recherche d'images directe via SearXNG (équivalent Google/Bing Images).
 
         Retourne l'URL directe de l'image, sans passer par une page intermédiaire.
         Les résultats ont un champ 'img_src' qui contient l'URL de l'image originale.
         On filtre par ratio hauteur/largeur pour ne garder que les images de bouteilles
-        (format portrait, ratio > 1.3) et on rejette les images trop petites.
+        (format portrait) et on rejette les images trop petites. `max_results` > 1
+        permet de récolter plusieurs candidats à comparer par score plutôt que de
+        s'arrêter sur le premier qui passe le filtre de ratio (utile pour la
+        recherche ciblée "fond transparent" : le premier résultat n'est pas
+        forcément celui qui a réellement un canal alpha).
         """
         log.info(f"SearXNG images: «{query}»")
+        found: list[tuple[bytes, str]] = []
         try:
             resp = requests.get(
                 f"{SEARXNG_URL}/search",
@@ -1695,7 +1762,7 @@ def search_official_photo(wine: dict, scan_bytes: Optional[bytes], priority_url:
             results = resp.json().get('results', [])
         except Exception as e:
             log.warning(f"SearXNG images erreur: {e}")
-            return None
+            return found
 
         for result in results[:10]:
             img_src = result.get('img_src', '') or result.get('thumbnail_src', '')
@@ -1716,26 +1783,44 @@ def search_official_photo(wine: dict, scan_bytes: Optional[bytes], priority_url:
                 log.debug(f"  Ratio {ratio:.2f} trop faible (pas une bouteille) — ignorée")
                 continue
 
-            log.info(f"✓ Photo image search ({len(data)//1024} KB, ratio {ratio:.2f})")
-            return data, ext
+            found.append((data, ext))
+            if len(found) >= max_results:
+                break
 
-        return None
+        return found
 
     # Phase 1 : sites de confiance, pertinence stricte
-    photo = _try_queries(queries_phase1, strict_relevance=True)
-    if photo:
-        return photo
+    _consider(_try_queries(queries_phase1, strict_relevance=True), 'trusted-strict')
+    if candidates and max(c[2] for c in candidates) >= GREAT_PHOTO_SCORE:
+        log.info("✓ Photo trouvée déjà excellente — recherche arrêtée")
+        return _best()
 
-    # Phase 2 : requêtes libres sur sites de confiance, pertinence souple
-    photo = _try_queries(queries_phase2, strict_relevance=bool(query_keywords))
-    if photo:
-        return photo
+    # Phase "fond transparent" : c'est très souvent là que se trouve la vraie
+    # bonne photo (fiche produit soignée du domaine, boutique en ligne) plutôt
+    # que sur les sites de vin communautaires dont les vignettes sont petites
+    # et sur fond plein. Lancée dès que la phase 1 n'a pas déjà tout réglé —
+    # pas en tout dernier recours comme avant.
+    for photo in _try_image_search(f"{wine_query} bouteille png fond transparent", max_results=3):
+        _consider(photo, 'transparent')
+    if candidates and max(c[2] for c in candidates) >= GREAT_PHOTO_SCORE:
+        log.info("✓ Photo à fond transparent trouvée — recherche arrêtée")
+        return _best()
 
-    # Phase 3 : recherche d'images directe (Google Images / Bing Images via SearXNG)
-    # Fallback pour les vins obscurs ou locaux absents des bases de données vin
-    photo = _try_image_search(f"{wine_query} bouteille vin")
-    if photo:
-        return photo
+    # Phase 2 : requêtes libres sur sites de confiance, pertinence souple —
+    # sautée si on a déjà un candidat décent (même logique que la phase 4).
+    if not candidates or max(c[2] for c in candidates) < DECENT_PHOTO_SCORE:
+        _consider(_try_queries(queries_phase2, strict_relevance=bool(query_keywords)), 'trusted-loose')
+
+    # Phase 4 : recherche d'images généraliste — dernier recours pour les vins
+    # obscurs ou locaux absents des bases de données vin et sans photo transparente
+    if not candidates or max(c[2] for c in candidates) < DECENT_PHOTO_SCORE:
+        for photo in _try_image_search(f"{wine_query} bouteille vin", max_results=1):
+            _consider(photo, 'generic')
+
+    if candidates:
+        best = max(candidates, key=lambda c: c[2])
+        log.info(f"✓ Meilleure photo retenue : {len(best[0])//1024} Ko, score {best[2]:.0f} (parmi {len(candidates)} candidat(s))")
+        return best[0], best[1]
 
     log.warning(f"Aucune photo officielle trouvée pour «{wine_query}»")
     return None
