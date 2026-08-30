@@ -10,7 +10,7 @@ import { WineEdit } from './pages/WineEdit';
 import { PendingWines } from './pages/PendingWines';
 import { AddWine } from './pages/AddWine';
 import { AddWineManual } from './pages/AddWineManual';
-import { AddWineInbox } from './pages/AddWineInbox';
+import { AddWineImport } from './pages/AddWineImport';
 import { ScanWine } from './pages/ScanWine';
 import { ScanQueue } from './pages/ScanQueue';
 import { CellarView } from './pages/CellarView';
@@ -64,7 +64,7 @@ export const router = createBrowserRouter([
           { path: '/pending', element: <PendingWines /> },
           { path: '/add', element: <AddWine /> },
           { path: '/add/manual', element: <AddWineManual /> },
-          { path: '/add/inbox', element: <AddWineInbox /> },
+          { path: '/add/import', element: <AddWineImport /> },
           { path: '/scan', element: <ScanWine /> },
           { path: '/scan/queue', element: <ScanQueue /> },
           { path: '/cellar', element: <CellarView /> },

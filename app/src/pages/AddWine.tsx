@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Camera, PenLine, ChevronRight } from 'lucide-react';
+import { Camera, PenLine, FileJson, ChevronRight } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
 
 const MODES = [
@@ -20,6 +20,15 @@ const MODES = [
     accent: 'text-gold',
     border: 'border-gold/30 hover:border-gold/60 bg-gold/5',
     iconBg: 'bg-gold/15',
+  },
+  {
+    to: '/add/import',
+    icon: FileJson,
+    title: 'Importer un fichier',
+    description: 'Importe le fichier JSON généré par le skill Claude (photos + recherche IA).',
+    accent: 'text-success',
+    border: 'border-success/30 hover:border-success/60 bg-success/5',
+    iconBg: 'bg-success/15',
   },
 ];
 
