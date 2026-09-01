@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  ChevronLeft, Thermometer, Clock, GlassWater, Grape, Award,
+  ChevronLeft, Thermometer, GlassWater, Grape, Award,
   UtensilsCrossed, Star, Wine, MapPin, XCircle,
 } from 'lucide-react';
 import { animate } from 'motion';
-import { Badge } from '../../components/ui/Badge';
 import type { Wine as WineType } from '../../stores/wine';
 
 /**
