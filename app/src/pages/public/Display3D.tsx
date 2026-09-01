@@ -95,10 +95,10 @@ function Cover({ wine, offset, onSelect }: CoverProps) {
       aria-label={wine.name}
       className="absolute top-1/2 left-1/2 outline-none cursor-pointer"
       style={{
-        width: 'min(30vh, 260px)',
-        height: 'min(30vh, 260px)',
-        marginLeft: 'calc(min(30vh, 260px) / -2)',
-        marginTop: 'calc(min(30vh, 260px) / -2)',
+        width: 'min(38vh, 340px)',
+        height: 'min(38vh, 340px)',
+        marginLeft: 'calc(min(38vh, 340px) / -2)',
+        marginTop: 'calc(min(38vh, 340px) / -2)',
         transform: `translateX(${translateX}%) translateZ(${translateZ}px) rotateY(${rotateY}deg) scale(${scale})`,
         transformStyle: 'preserve-3d',
         zIndex,
