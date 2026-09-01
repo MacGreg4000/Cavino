@@ -23,6 +23,7 @@ import { Settings } from './pages/Settings';
 import { PublicWineList } from './pages/public/PublicWineList';
 import { PublicWineDetail } from './pages/public/PublicWineDetail';
 import { Display3D } from './pages/public/Display3D';
+import { Display3DWineDetail } from './pages/public/Display3DWineDetail';
 
 export const router = createBrowserRouter([
   // Page login (accessible sans auth)
@@ -47,6 +48,12 @@ export const router = createBrowserRouter([
   {
     path: '/public/display3d',
     element: <Display3D />,
+  },
+
+  // Fiche vin en mode paysage, dans l'esthétique Cover Flow (depuis Display3D)
+  {
+    path: '/public/display3d/wine/:id',
+    element: <Display3DWineDetail />,
   },
 
   // Application admin (protégée)

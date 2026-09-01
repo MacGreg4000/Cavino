@@ -365,7 +365,7 @@ export function Display3D() {
                   // Un simple tap sur la pochette active ouvre la fiche ; sur
                   // une pochette latérale, on s'y déplace d'abord.
                   if (offset === 0) {
-                    window.location.href = `/public/wine/${wine.id}`;
+                    window.location.href = `/public/display3d/wine/${wine.id}`;
                   } else {
                     goTo(i);
                   }
