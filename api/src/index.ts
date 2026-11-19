@@ -8,6 +8,7 @@ import authPlugin from './plugins/auth.js';
 import { authRoutes } from './routes/auth.js';
 import { wineRoutes } from './routes/wines.js';
 import { locationRoutes } from './routes/locations.js';
+import { wallRoutes } from './routes/walls.js';
 import { categoryRoutes } from './routes/categories.js';
 import { statsRoutes } from './routes/stats.js';
 import { tastingRoutes } from './routes/tasting.js';
@@ -58,6 +59,7 @@ async function main() {
     scoped.addHook('preHandler', app.requireAuth);
     await scoped.register(wineRoutes);
     await scoped.register(locationRoutes);
+    await scoped.register(wallRoutes);
     await scoped.register(categoryRoutes);
     await scoped.register(statsRoutes);
     await scoped.register(tastingRoutes);

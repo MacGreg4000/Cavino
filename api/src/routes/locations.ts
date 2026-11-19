@@ -15,7 +15,12 @@ const createLocationSchema = z.object({
     labelCols: z.array(z.string()),
     blockedSlots: z.array(z.string()).optional().default([]),
   }),
-  wallPosition: z.object({ x: z.number().min(0).max(20000), y: z.number().min(0).max(20000) }).nullable().optional(),
+  wallPosition: z.object({
+    x: z.number().min(0).max(20000),
+    y: z.number().min(0).max(20000),
+    wallId: z.string().uuid().optional(),
+    hidden: z.boolean().optional(),
+  }).nullable().optional(),
 });
 
 const updateLocationSchema = createLocationSchema.partial();

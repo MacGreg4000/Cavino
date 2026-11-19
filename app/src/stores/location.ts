@@ -9,13 +9,16 @@ export interface GridConfig {
   blockedSlots: string[];
 }
 
+// wallId absent = premier mur ; hidden = rack non affiché sur les murs
+export interface WallPosition { x: number; y: number; wallId?: string; hidden?: boolean }
+
 export interface Location {
   id: string;
   name: string;
   type: 'cellar' | 'fridge' | 'rack' | 'other';
   color?: string;
   gridConfig?: GridConfig;
-  wallPosition?: { x: number; y: number } | null;
+  wallPosition?: WallPosition | null;
   createdAt?: string;
 }
 
@@ -48,7 +51,7 @@ interface LocationState {
   fetchLocation: (id: string) => Promise<Location>;
   fetchGrid: (id: string) => Promise<{ location: Location; slots: GridSlot[] }>;
   createLocation: (data: { name: string; type: string; color?: string; gridConfig: GridConfig }) => Promise<Location>;
-  updateLocation: (id: string, data: { name?: string; type?: Location['type']; color?: string; gridConfig?: GridConfig; wallPosition?: { x: number; y: number } | null }) => Promise<Location>;
+  updateLocation: (id: string, data: { name?: string; type?: Location['type']; color?: string; gridConfig?: GridConfig; wallPosition?: WallPosition | null }) => Promise<Location>;
   deleteLocation: (id: string) => Promise<void>;
 }
 

@@ -12,6 +12,15 @@ export const wineCategories = pgTable('wine_categories', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
 
+// ── Murs (vue Mur : plusieurs murs, chacun avec son fond) ─────────────
+export const walls = pgTable('walls', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  background: text('background'),
+  sortOrder: integer('sort_order').default(0).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+});
+
 // ── Emplacements ──────────────────────────────────────────
 export const locations = pgTable('locations', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -26,7 +35,8 @@ export const locations = pgTable('locations', {
     blockedSlots: string[];
   }>(),
   // Position du rack sur la "vue mur" (coordonnées virtuelles en px). Null = pas encore placé.
-  wallPosition: jsonb('wall_position').$type<{ x: number; y: number }>(),
+  // wallId absent = premier mur ; hidden = rack non affiché sur les murs.
+  wallPosition: jsonb('wall_position').$type<{ x: number; y: number; wallId?: string; hidden?: boolean }>(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
 
