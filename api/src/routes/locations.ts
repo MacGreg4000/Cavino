@@ -15,6 +15,7 @@ const createLocationSchema = z.object({
     labelCols: z.array(z.string()),
     blockedSlots: z.array(z.string()).optional().default([]),
   }),
+  wallPosition: z.object({ x: z.number().min(0).max(20000), y: z.number().min(0).max(20000) }).nullable().optional(),
 });
 
 const updateLocationSchema = createLocationSchema.partial();
@@ -84,6 +85,7 @@ export async function locationRoutes(app: FastifyInstance) {
     if (body.type !== undefined) updates.type = body.type;
     if (body.color !== undefined) updates.color = body.color;
     if (body.gridConfig !== undefined) updates.gridConfig = body.gridConfig;
+    if (body.wallPosition !== undefined) updates.wallPosition = body.wallPosition;
 
     const [updated] = await db.update(locations)
       .set(updates)

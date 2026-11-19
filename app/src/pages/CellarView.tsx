@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { MapPin, Plus, Settings, ArrowRightLeft, Trash2, AlertTriangle } from 'lucide-react';
+import { MapPin, Plus, Settings, ArrowRightLeft, Trash2, AlertTriangle, LayoutGrid } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -261,11 +261,18 @@ export function CellarView() {
         subtitle={`${locations.length} emplacement${locations.length > 1 ? 's' : ''}`}
         back
         action={
-          <Link to="/cellar/new">
-            <Button variant="secondary" size="sm">
-              <Plus size={14} /> Ajouter
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link to="/wall">
+              <Button variant="secondary" size="sm">
+                <LayoutGrid size={14} /> Mur
+              </Button>
+            </Link>
+            <Link to="/cellar/new">
+              <Button variant="secondary" size="sm">
+                <Plus size={14} /> Ajouter
+              </Button>
+            </Link>
+          </div>
         }
       />
 

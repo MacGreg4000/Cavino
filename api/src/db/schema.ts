@@ -25,6 +25,8 @@ export const locations = pgTable('locations', {
     labelCols: string[];
     blockedSlots: string[];
   }>(),
+  // Position du rack sur la "vue mur" (coordonnées virtuelles en px). Null = pas encore placé.
+  wallPosition: jsonb('wall_position').$type<{ x: number; y: number }>(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
 

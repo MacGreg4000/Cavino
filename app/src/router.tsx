@@ -20,6 +20,7 @@ import { Stats } from './pages/Stats';
 import { ConsumedWines } from './pages/ConsumedWines';
 import { DrinkNow } from './pages/DrinkNow';
 import { Settings } from './pages/Settings';
+import { Wall } from './pages/Wall';
 import { PublicWineList } from './pages/public/PublicWineList';
 import { PublicWineDetail } from './pages/public/PublicWineDetail';
 import { Display3D } from './pages/public/Display3D';
@@ -60,6 +61,8 @@ export const router = createBrowserRouter([
   {
     element: <AuthGuard />,
     children: [
+      // Vue Mur plein écran (hors AppLayout : pas de barre de navigation)
+      { path: '/wall', element: <Wall /> },
       {
         element: <AppLayout />,
         children: [

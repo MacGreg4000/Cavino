@@ -15,6 +15,7 @@ export interface Location {
   type: 'cellar' | 'fridge' | 'rack' | 'other';
   color?: string;
   gridConfig?: GridConfig;
+  wallPosition?: { x: number; y: number } | null;
   createdAt?: string;
 }
 
@@ -47,7 +48,7 @@ interface LocationState {
   fetchLocation: (id: string) => Promise<Location>;
   fetchGrid: (id: string) => Promise<{ location: Location; slots: GridSlot[] }>;
   createLocation: (data: { name: string; type: string; color?: string; gridConfig: GridConfig }) => Promise<Location>;
-  updateLocation: (id: string, data: { name?: string; type?: Location['type']; color?: string; gridConfig?: GridConfig }) => Promise<Location>;
+  updateLocation: (id: string, data: { name?: string; type?: Location['type']; color?: string; gridConfig?: GridConfig; wallPosition?: { x: number; y: number } | null }) => Promise<Location>;
   deleteLocation: (id: string) => Promise<void>;
 }
 
