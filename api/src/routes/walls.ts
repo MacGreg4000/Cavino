@@ -1,6 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { eq, asc, sql } from 'drizzle-orm';
 import { z } from 'zod';
+import path from 'node:path';
+import fs from 'node:fs/promises';
+import crypto from 'node:crypto';
 import { db } from '../db/index.js';
 import { walls } from '../db/schema.js';
 
@@ -42,6 +45,30 @@ export async function wallRoutes(app: FastifyInstance) {
     if (Object.keys(updates).length === 0) return reply.status(400).send({ error: 'Rien à modifier' });
     const [updated] = await db.update(walls).set(updates).where(eq(walls.id, id)).returning();
     if (!updated) return reply.status(404).send({ error: 'Wall not found' });
+    return updated;
+  });
+
+  // POST /api/walls/:id/background — image de fond personnalisée
+  app.post('/api/walls/:id/background', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const file = await req.file();
+    if (!file) return reply.status(400).send({ error: 'Aucun fichier' });
+    if (!file.mimetype.startsWith('image/')) return reply.status(400).send({ error: 'Le fichier doit être une image' });
+
+    const [current] = await db.select().from(walls).where(eq(walls.id, id));
+    if (!current) return reply.status(404).send({ error: 'Wall not found' });
+
+    const dir = path.join(process.env.PHOTOS_PATH || '/photos', 'walls');
+    await fs.mkdir(dir, { recursive: true });
+    const ext = (path.extname(file.filename) || '.jpg').toLowerCase().replace(/[^.a-z0-9]/g, '') || '.jpg';
+    const filename = `${crypto.randomUUID()}${ext}`;
+    await fs.writeFile(path.join(dir, filename), await file.toBuffer());
+
+    // supprime l'ancienne image personnalisée
+    if (current.background?.startsWith('/photos/walls/')) {
+      await fs.unlink(path.join(dir, path.basename(current.background))).catch(() => {});
+    }
+    const [updated] = await db.update(walls).set({ background: `/photos/walls/${filename}` }).where(eq(walls.id, id)).returning();
     return updated;
   });
 

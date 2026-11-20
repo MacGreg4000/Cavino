@@ -15,6 +15,7 @@ interface WallState {
   createWall: (name: string, background?: string) => Promise<WallDef>;
   updateWall: (id: string, data: { name?: string; background?: string }) => Promise<void>;
   deleteWall: (id: string) => Promise<void>;
+  uploadBackground: (id: string, file: File) => Promise<void>;
 }
 
 export const useWallStore = create<WallState>((set, get) => ({
@@ -50,6 +51,15 @@ export const useWallStore = create<WallState>((set, get) => ({
       set({ walls: prev });
       throw e;
     }
+  },
+
+  uploadBackground: async (id, file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await apiFetch(`/api/walls/${id}/background`, { method: 'POST', body: formData, rawBody: true });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const updated: WallDef = await res.json();
+    set({ walls: get().walls.map((w) => (w.id === id ? { ...w, ...updated } : w)) });
   },
 
   deleteWall: async (id) => {

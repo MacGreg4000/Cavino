@@ -15,5 +15,7 @@ export const WALL_BACKGROUNDS: WallBackground[] = [
 ];
 
 export function getWallBackground(id: string): WallBackground {
+  // image personnalisée : l'« id » est directement l'URL de l'image envoyée
+  if (id.startsWith('/photos/')) return { id, label: 'Image personnalisée', src: id };
   return WALL_BACKGROUNDS.find((b) => b.id === id) ?? WALL_BACKGROUNDS[0];
 }

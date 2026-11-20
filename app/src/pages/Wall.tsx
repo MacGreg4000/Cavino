@@ -232,6 +232,22 @@ function overlaps(a: { x: number; y: number; w: number; h: number }, b: { x: num
   return a.x < b.x + b.w + pad && a.x + a.w + pad > b.x && a.y < b.y + b.h + pad && a.y + a.h + pad > b.y;
 }
 
+/** Réduit l'image (max 2560 px) et la convertit en JPEG avant envoi. */
+async function shrinkImage(file: File): Promise<File> {
+  try {
+    const bmp = await createImageBitmap(file);
+    const ratio = Math.min(1, 2560 / Math.max(bmp.width, bmp.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bmp.width * ratio);
+    canvas.height = Math.round(bmp.height * ratio);
+    canvas.getContext('2d')!.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/jpeg', 0.88));
+    return blob ? new File([blob], 'mur.jpg', { type: 'image/jpeg' }) : file;
+  } catch {
+    return file;
+  }
+}
+
 function findFreeSpot(size: { w: number; h: number }, placed: { x: number; y: number; w: number; h: number }[]) {
   for (let y = MARGIN; y < 6000; y += 24) {
     for (let x = MARGIN; x + size.w <= WALL_MIN_W - MARGIN; x += 24) {
@@ -289,7 +305,7 @@ function WineTooltip({ slot, x, y, rackName }: { slot: GridSlot; x: number; y: n
 export function Wall() {
   const navigate = useNavigate();
   const { locations, fetchLocations, fetchGrid, updateLocation } = useLocationStore();
-  const { walls, loaded: wallsLoaded, fetchWalls, createWall, updateWall, deleteWall } = useWallStore();
+  const { walls, loaded: wallsLoaded, fetchWalls, createWall, updateWall, deleteWall, uploadBackground } = useWallStore();
   const [grids, setGrids] = useState<Record<string, GridSlot[]>>({});
   const [editing, setEditing] = useState(false);
   const [zoom, setZoom] = useState(1);
@@ -298,6 +314,8 @@ export function Wall() {
   const [selected, setSelected] = useState<GridSlot | null>(null);
   const [hover, setHover] = useState<{ slot: GridSlot; x: number; y: number } | null>(null);
   const [bgOpen, setBgOpen] = useState(false);
+  const [bgUploading, setBgUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [wallError, setWallError] = useState<string | null>(null);
@@ -475,6 +493,21 @@ export function Wall() {
     setSettingsOpen(true);
   };
 
+  const onPickImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !wall) return;
+    setBgUploading(true);
+    setWallError(null);
+    try {
+      await uploadBackground(wall.id, await shrinkImage(file));
+      setBgOpen(false);
+    } catch {
+      setWallError("Impossible d'envoyer l'image.");
+    }
+    setBgUploading(false);
+  };
+
   const saveName = () => {
     const n = nameDraft.trim();
     if (wall && n && n !== wall.name) updateWall(wall.id, { name: n }).catch(() => setWallError('Renommage impossible.'));
@@ -552,7 +585,7 @@ export function Wall() {
       </div>
 
       {/* ── Murs (onglets) ── */}
-      {(walls.length > 1 || editing) && (
+      {(
         <div className="relative z-20 flex items-center gap-2 px-4 py-2 bg-black/45 border-b border-white/5 overflow-x-auto no-scrollbar">
           {walls.map((w) => (
             <button
@@ -565,13 +598,13 @@ export function Wall() {
               {w.name}
             </button>
           ))}
+          <button onClick={openSettings} className="shrink-0 ml-auto flex items-center gap-1.5 px-3 py-1 rounded-full text-sm border border-white/15 text-white/60 hover:text-white cursor-pointer">
+            <Settings size={14} /> Renommer / réglages
+          </button>
           {editing && (
             <>
               <button onClick={addWall} className="shrink-0 flex items-center gap-1 px-3 py-1 rounded-full text-sm border border-dashed border-white/25 text-white/60 hover:text-white cursor-pointer">
                 <Plus size={14} /> Nouveau mur
-              </button>
-              <button onClick={openSettings} className="shrink-0 ml-auto flex items-center gap-1.5 px-3 py-1 rounded-full text-sm border border-white/15 text-white/60 hover:text-white cursor-pointer">
-                <Settings size={14} /> Ce mur
               </button>
             </>
           )}
@@ -680,7 +713,7 @@ export function Wall() {
       {/* ── Choix du fond ── */}
       <BottomSheet open={bgOpen} onClose={() => setBgOpen(false)} title={`Fond — ${wall?.name ?? ''}`}>
         <div className="grid grid-cols-2 gap-3">
-          {WALL_BACKGROUNDS.map((b) => (
+          {(bg.id.startsWith('/photos/') ? [bg, ...WALL_BACKGROUNDS] : WALL_BACKGROUNDS).map((b) => (
             <button
               key={b.id}
               onClick={() => { if (wall) updateWall(wall.id, { background: b.id }).catch(() => {}); setBgOpen(false); }}
@@ -691,6 +724,11 @@ export function Wall() {
             </button>
           ))}
         </div>
+        <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onPickImage} />
+        <Button variant="secondary" className="w-full mt-3" disabled={bgUploading} onClick={() => fileRef.current?.click()}>
+          <ImageIcon size={16} /> {bgUploading ? 'Envoi…' : 'Importer ma propre image'}
+        </Button>
+        {wallError && <p className="text-sm text-danger mt-2">{wallError}</p>}
       </BottomSheet>
 
       {/* ── Réglages du mur ── */}
