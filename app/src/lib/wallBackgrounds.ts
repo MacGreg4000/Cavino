@@ -10,14 +10,8 @@ export interface WallBackground {
 }
 
 export const WALL_BACKGROUNDS: WallBackground[] = [
-  { id: 'brique-rouge', label: 'Brique rouge', src: '/wall/brique-rouge.jpg' },
-  { id: 'vieux-mur-briques', label: 'Vieux mur de briques', src: '/wall/vieux-mur-briques.jpg' },
-  { id: 'brique-plancher', label: 'Brique et plancher', src: '/wall/brique-plancher.jpg' },
-  { id: 'brique-noire', label: 'Brique noire', src: '/wall/brique-noire.jpg' },
-  { id: 'brique-noire-vieillie', label: 'Brique noire vieillie', src: '/wall/brique-noire-vieillie.jpg' },
+  { id: 'pierre-eclairee', label: 'Pierre éclairée et plancher', src: '/wall/pierre-eclairee.jpg' },
   { id: 'moellon', label: 'Moellon', src: '/wall/moellon.jpg' },
-  { id: 'pierre-eclairee', label: 'Pierre éclairée', src: '/wall/pierre-eclairee.jpg' },
-  { id: 'ardoise-plancher', label: 'Pierre ardoise et plancher', src: '/wall/ardoise-plancher.jpg' },
 ];
 
 export function getWallBackground(id: string): WallBackground {

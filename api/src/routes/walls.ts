@@ -14,7 +14,7 @@ export async function wallRoutes(app: FastifyInstance) {
   app.get('/api/walls', async () => {
     let list = await db.select().from(walls).orderBy(asc(walls.sortOrder), asc(walls.createdAt));
     if (list.length === 0) {
-      await db.insert(walls).values({ name: 'Mur principal', background: 'brique-rouge', sortOrder: 0 });
+      await db.insert(walls).values({ name: 'Mur principal', background: 'pierre-eclairee', sortOrder: 0 });
       list = await db.select().from(walls).orderBy(asc(walls.sortOrder), asc(walls.createdAt));
     }
     return list;
@@ -26,7 +26,7 @@ export async function wallRoutes(app: FastifyInstance) {
     const [{ next }] = await db.select({ next: sql<number>`coalesce(max(${walls.sortOrder}), -1) + 1` }).from(walls);
     const [created] = await db.insert(walls).values({
       name: body.name,
-      background: body.background ?? 'brique-rouge',
+      background: body.background ?? 'pierre-eclairee',
       sortOrder: Number(next),
     }).returning();
     return created;
